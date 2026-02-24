@@ -51,7 +51,7 @@ export default function Home() {
           >
             <h1 className="text-4xl md:text-6xl font-display font-bold mb-6 leading-tight">
               Encontre o seu lugar em{" "}
-              <span className="text-accent">Juazeiro</span>
+              <span className="text-accent">Petrolina</span>
             </h1>
             <p className="text-lg md:text-xl text-white/90 font-light">
               Dezenas de casas, apartamentos e terrenos esperando por você.

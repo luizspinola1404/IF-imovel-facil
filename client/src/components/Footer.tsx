@@ -52,7 +52,7 @@ export function Footer() {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-primary shrink-0" />
-                <span>Rua das Palmeiras, 210, Centenário, Juazeiro - BA</span>
+                <span>Rua das Palmeiras, 208, Centenário, Juazeiro - BA</span>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="h-5 w-5 text-primary shrink-0" />
