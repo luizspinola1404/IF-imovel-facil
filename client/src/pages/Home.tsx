@@ -53,9 +53,9 @@ export default function Home() {
               Encontre o seu lugar em{" "}
               <span className="text-accent">Juazeiro</span>
             </h1>
-            <p className="text-lg md:text-xl text-white/90 font-light">
-              Dezenas de casas, apartamentos e terrenos esperando por vocÃª.
-            </p>
+            <p className="text-2xl md:text-4xl text-red-600 font-light">
+  Casa linda em destaque , lançamento, oportunidade.
+</p>
           </motion.div>
 
           {/* Search Box */}
