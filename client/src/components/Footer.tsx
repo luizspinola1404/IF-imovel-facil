@@ -15,7 +15,7 @@ export function Footer() {
               <span className="font-display text-xl font-bold text-white">Imóvel Fácil</span>
             </div>
             <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
-              Sua plataforma de confiança para encontrar o imóvel dos seus sonhos em Juazeiro e região. Venda, aluguel e administração com excelência.
+              Sua plataforma de confiança para encontrar o imóvel dos seus sonhos em Juazeiro e região. Venda, aluguel e administração com excelência. Corretor responsavel: Luiz Spinola. CRECI-BA 34611
             </p>
             <div className="flex gap-4 pt-2">
               <a href="#" className="hover:text-primary transition-colors"><Facebook className="h-5 w-5" /></a>
