@@ -192,7 +192,7 @@ export default function Home() {
             Quer vender ou alugar seu imóvel?
           </h2>
           <p className="text-primary-foreground/80 max-w-2xl mx-auto mb-10 text-lg">
-            Anuncie com a Imóvel Fácil e tenha a melhor visibilidade de
+            Anuncie com a Imoviu e tenha a melhor visibilidade de
             Juazeiro. Processo rápido, seguro e sem burocracia.
           </p>
           <a href="/proprietario">

@@ -12,7 +12,7 @@ export function Footer() {
               <div className="bg-primary p-1.5 rounded-lg">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               </div>
-              <span className="font-display text-xl font-bold text-white">Imóvel Fácil</span>
+              <span className="font-display text-xl font-bold text-white">Imoviu</span>
             </div>
             <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
               Sua plataforma de confiança para encontrar o imóvel dos seus sonhos em Juazeiro e região. Venda, aluguel e administração com excelência. Corretor responsavel: Luiz Spinola. CRECI-BA 34611
@@ -52,7 +52,7 @@ export function Footer() {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-primary shrink-0" />
-                <span>Rua das Palmeiras, 208, Centen�rio, Juazeiro - BA</span>
+                <span>Rua das Palmeiras, 208, Centenario, Juazeiro - BA</span>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="h-5 w-5 text-primary shrink-0" />
@@ -67,7 +67,7 @@ export function Footer() {
         </div>
         
         <div className="border-t border-slate-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-500">
-          <p>© 2024 Imóvel Fácil Juazeiro. Todos os direitos reservados.</p>
+          <p>© 2024 Imoviu Juazeiro. Todos os direitos reservados.</p>
           <div className="flex gap-6">
             <a href="#" className="hover:text-slate-300">Termos de Uso</a>
             <a href="#" className="hover:text-slate-300">Privacidade</a>
