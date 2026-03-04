@@ -50,7 +50,7 @@ export default function Home() {
             className="max-w-3xl mx-auto text-center text-white mb-10"
           >
             <h1 className="text-4xl md:text-6xl font-display font-bold mb-6 leading-tight">
-              Comprar e vender imóveis em{" "}
+              Comprar, vender e alugar imóveis em{" "}
               <span className="text-accent">Juazeiro -BA e Petrolina-PE</span>
             </h1>
             <p className="text-lg md:text-xl text-white/90 font-light">
