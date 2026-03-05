@@ -12,7 +12,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: "/", label: "Início" },
-    { href: "/proprietario", label: "Anunciar Imóvel" },
+    { href: "/proprietario", label: "Anunciar seu Imóvel" },
     { href: "/contato", label: "Contato" },
   ];
 
