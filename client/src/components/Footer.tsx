@@ -29,7 +29,7 @@ export function Footer() {
             <h3 className="font-display font-semibold text-white mb-4">Navegação</h3>
             <ul className="space-y-2 text-sm">
               <li><Link href="/" className="hover:text-primary transition-colors">Início</Link></li>
-              <li><Link href="/proprietario" className="hover:text-primary transition-colors">Anunciar Imóvel</Link></li>
+              <li><Link href="/proprietario" className="hover:text-primary transition-colors">Anunciar seu Imóvel</Link></li>
               <li><Link href="/contato" className="hover:text-primary transition-colors">Fale Conosco</Link></li>
               <li><Link href="/dashboard" className="hover:text-primary transition-colors">Área do Corretor</Link></li>
             </ul>
