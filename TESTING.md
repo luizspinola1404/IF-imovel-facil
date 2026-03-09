@@ -1,6 +1,6 @@
 # Testing Guide
 
-This guide explains the testing infrastructure and how to write and run tests for the Imóvel Fácil application.
+This guide explains the testing infrastructure and how to write and run tests for the Imoviu application.
 
 ## Overview
 
