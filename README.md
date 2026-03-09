@@ -1,4 +1,4 @@
-# Imóvel Fácil - Real Estate Platform
+# Imoviu - Real Estate Platform
 
 A full-stack TypeScript application for real estate property management with a modern React frontend and Express.js backend.
 

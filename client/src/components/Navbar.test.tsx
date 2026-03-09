@@ -18,7 +18,7 @@ vi.mock("@/hooks/use-auth", () => ({
 describe("Navbar", () => {
   it("should render the logo", () => {
     render(<Navbar />);
-    expect(screen.getByText("Imóvel Fácil")).toBeInTheDocument();
+    expect(screen.getByText("Imoviu")).toBeInTheDocument();
     expect(screen.getByText("JUAZEIRO")).toBeInTheDocument();
   });
 

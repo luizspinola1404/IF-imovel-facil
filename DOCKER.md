@@ -1,6 +1,6 @@
 # Docker Deployment Guide
 
-This guide provides detailed instructions for deploying the Imóvel Fácil application using Docker.
+This guide provides detailed instructions for deploying the Imoviu application using Docker.
 
 ## Quick Start
 
@@ -9,7 +9,7 @@ The fastest way to get the application running with Docker:
 ```bash
 # 1. Clone the repository
 git clone <repository-url>
-cd imovel-facil
+cd imoviu
 
 # 2. Create environment file
 cp .env.example .env

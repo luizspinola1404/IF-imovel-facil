@@ -12,7 +12,7 @@ vi.mock("wouter", () => ({
 describe("Footer", () => {
   it("should render the brand name", () => {
     render(<Footer />);
-    expect(screen.getByText("Imóvel Fácil")).toBeInTheDocument();
+    expect(screen.getByText("Imoviu")).toBeInTheDocument();
   });
 
   it("should render brand description", () => {
@@ -50,7 +50,7 @@ describe("Footer", () => {
   it("should render copyright notice", () => {
     render(<Footer />);
     expect(
-      screen.getByText(/© 2024 Imóvel Fácil Juazeiro/)
+      screen.getByText(/© 2024 Imoviu Juazeiro/)
     ).toBeInTheDocument();
   });
 

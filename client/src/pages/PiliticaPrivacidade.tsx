@@ -1,11 +1,11 @@
 export default function PoliticaPrivacidade() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px" }}>
-      <h1>Política de Privacidade – Imóvel Fácil</h1>
+      <h1>Política de Privacidade – Imoviu</h1>
 
       <p>
         A <strong>Luiz Spinola Imóveis</strong>, responsável pelo aplicativo
-        <strong> Imóvel Fácil</strong>, respeita a sua privacidade e está
+        <strong> Imoviu </strong>, respeita a sua privacidade e está
         comprometida em proteger os dados pessoais dos usuários, conforme a
         Lei Geral de Proteção de Dados (LGPD).
       </p>
