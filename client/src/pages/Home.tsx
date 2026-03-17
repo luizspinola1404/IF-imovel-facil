@@ -54,7 +54,7 @@ export default function Home() {
               <span className="text-accent">Juazeiro -BA e Petrolina-PE</span>
             </h1>
             <p className="text-lg md:text-xl text-white/90 font-light">
-              Dezenas de casas, apartamentos e terrenos esperando por você.
+              Dezenas de casas, apartamentos e terrenos esperando por você!
             </p>
           </motion.div>
 
