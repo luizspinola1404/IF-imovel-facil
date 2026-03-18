@@ -13,6 +13,8 @@ As migrações já foram aplicadas no seu ambiente local.
 npm run db:migrate
 ```
 
+'''migramigra'''
+
 ### Opção 2: Rodar SQL direto no banco
 
 Se preferir aplicar manualmente no banco de dados de produção:
