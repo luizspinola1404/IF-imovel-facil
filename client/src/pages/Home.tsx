@@ -208,7 +208,7 @@ Alugar
           </h2>
           <p className="text-primary-foreground/80 max-w-2xl mx-auto mb-10 text-lg">
             Anuncie com a Imoviu e tenha a melhor visibilidade de
-            Juazeiro. Processo rápido, seguro e sem burocracia.
+            Juazeiro. Processo rápido, seguro e sem burocracia...
           </p>
           <a href="/proprietario">
             <Button
