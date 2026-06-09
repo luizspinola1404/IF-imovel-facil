@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { PropertyAdvantagesSelect } from "./PropertyAdvantagesSelect";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
@@ -399,6 +400,13 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
               </FormItem>
             )}
           />
+
+          {property && (
+            <FormItem className="col-span-2">
+              <FormLabel>Vantagens do Imóvel</FormLabel>
+              <PropertyAdvantagesSelect propertyId={property.id} />
+            </FormItem>
+          )}
         </div>
 
         <div className="flex justify-end pt-4">

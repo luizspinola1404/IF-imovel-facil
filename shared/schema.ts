@@ -20,6 +20,21 @@ export const properties = pgTable("properties", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const advantages = pgTable("advantages", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"), // Optional icon/emoji
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const propertyAdvantages = pgTable("property_advantages", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  advantageId: integer("advantage_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -31,10 +46,16 @@ export const contacts = pgTable("contacts", {
 });
 
 export const insertPropertySchema = createInsertSchema(properties).omit({ id: true, createdAt: true });
+export const insertAdvantageSchema = createInsertSchema(advantages).omit({ id: true, createdAt: true });
+export const insertPropertyAdvantageSchema = createInsertSchema(propertyAdvantages).omit({ id: true, createdAt: true });
 export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
 
 export type Property = typeof properties.$inferSelect;
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
+export type Advantage = typeof advantages.$inferSelect;
+export type InsertAdvantage = z.infer<typeof insertAdvantageSchema>;
+export type PropertyAdvantage = typeof propertyAdvantages.$inferSelect;
+export type InsertPropertyAdvantage = z.infer<typeof insertPropertyAdvantageSchema>;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = z.infer<typeof insertContactSchema>;
 

@@ -87,6 +87,84 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
+  // Advantages API
+  app.get(api.advantages.list.path, async (req, res) => {
+    const advs = await storage.getAdvantages();
+    res.json(advs);
+  });
+
+  app.get(api.advantages.get.path, async (req, res) => {
+    const advantage = await storage.getAdvantage(Number(req.params.id));
+    if (!advantage) {
+      return res.status(404).json({ message: "Advantage not found" });
+    }
+    res.json(advantage);
+  });
+
+  app.post(api.advantages.create.path, isAuthenticated, ensureAdmin, async (req, res) => {
+    try {
+      const input = api.advantages.create.input.parse(req.body);
+      const advantage = await storage.createAdvantage(input);
+      res.status(201).json(advantage);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.put(api.advantages.update.path, isAuthenticated, ensureAdmin, async (req, res) => {
+    try {
+      const input = api.advantages.update.input.parse(req.body);
+      const advantage = await storage.updateAdvantage(Number(req.params.id), input);
+      res.json(advantage);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.advantages.delete.path, isAuthenticated, ensureAdmin, async (req, res) => {
+    await storage.deleteAdvantage(Number(req.params.id));
+    res.status(204).end();
+  });
+
+  // Property advantages API
+  app.get("/api/properties/:propertyId/advantages", async (req, res) => {
+    const advs = await storage.getPropertyAdvantages(Number(req.params.propertyId));
+    res.json(advs);
+  });
+
+  app.post("/api/properties/:propertyId/advantages", isAuthenticated, async (req, res) => {
+    try {
+      const input = z.object({ advantageId: z.number() }).parse(req.body);
+      const result = await storage.addPropertyAdvantage(Number(req.params.propertyId), input.advantageId);
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/api/properties/:propertyId/advantages/:advantageId", isAuthenticated, async (req, res) => {
+    await storage.removePropertyAdvantage(Number(req.params.propertyId), Number(req.params.advantageId));
+    res.status(204).end();
+  });
+
   // File uploads (images) - sent to MinIO
   const upload = multer({ 
     storage: multer.memoryStorage(), 

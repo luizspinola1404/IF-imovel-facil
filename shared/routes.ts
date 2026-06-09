@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertPropertySchema, insertContactSchema, properties, contacts } from './schema';
+import { insertPropertySchema, insertContactSchema, insertAdvantageSchema, insertPropertyAdvantageSchema, properties, contacts, advantages, propertyAdvantages } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -67,6 +67,81 @@ export const api = {
         204: z.void(),
         404: errorSchemas.notFound,
         401: errorSchemas.internal, // Unauthorized
+      },
+    },
+  },
+  advantages: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/advantages',
+      responses: {
+        200: z.array(z.custom<typeof advantages.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/advantages/:id',
+      responses: {
+        200: z.custom<typeof advantages.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/advantages',
+      input: insertAdvantageSchema,
+      responses: {
+        201: z.custom<typeof advantages.$inferSelect>(),
+        400: errorSchemas.validation,
+        401: errorSchemas.internal, // Unauthorized
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/advantages/:id',
+      input: insertAdvantageSchema.partial(),
+      responses: {
+        200: z.custom<typeof advantages.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+        401: errorSchemas.internal, // Unauthorized
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/advantages/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        401: errorSchemas.internal, // Unauthorized
+      },
+    },
+  },
+  propertyAdvantages: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/properties/:propertyId/advantages',
+      responses: {
+        200: z.array(z.custom<typeof advantages.$inferSelect>()),
+      },
+    },
+    add: {
+      method: 'POST' as const,
+      path: '/api/properties/:propertyId/advantages',
+      input: z.object({ advantageId: z.number() }),
+      responses: {
+        201: z.custom<typeof propertyAdvantages.$inferSelect>(),
+        400: errorSchemas.validation,
+        401: errorSchemas.internal,
+      },
+    },
+    remove: {
+      method: 'DELETE' as const,
+      path: '/api/properties/:propertyId/advantages/:advantageId',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        401: errorSchemas.internal,
       },
     },
   },

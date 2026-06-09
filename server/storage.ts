@@ -3,13 +3,19 @@ import {
   properties,
   contacts,
   users,
+  advantages,
+  propertyAdvantages,
   type Property,
   type InsertProperty,
   type UpdatePropertyRequest,
   type Contact,
   type InsertContact,
   type User,
-  type UpsertUser
+  type UpsertUser,
+  type Advantage,
+  type InsertAdvantage,
+  type PropertyAdvantage,
+  type InsertPropertyAdvantage,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, or } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
@@ -22,6 +28,14 @@ export interface IStorage extends IAuthStorage {
   updateProperty(id: number, updates: UpdatePropertyRequest): Promise<Property>;
   deleteProperty(id: number): Promise<void>;
   createContact(contact: InsertContact): Promise<Contact>;
+  getAdvantages(): Promise<Advantage[]>;
+  getAdvantage(id: number): Promise<Advantage | undefined>;
+  createAdvantage(advantage: InsertAdvantage): Promise<Advantage>;
+  updateAdvantage(id: number, updates: Partial<InsertAdvantage>): Promise<Advantage>;
+  deleteAdvantage(id: number): Promise<void>;
+  getPropertyAdvantages(propertyId: number): Promise<Advantage[]>;
+  addPropertyAdvantage(propertyId: number, advantageId: number): Promise<PropertyAdvantage>;
+  removePropertyAdvantage(propertyId: number, advantageId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -111,6 +125,61 @@ export class DatabaseStorage implements IStorage {
     }
 
     await db.delete(properties).where(eq(properties.id, id));
+  }
+
+  // Advantage methods
+  async getAdvantages(): Promise<Advantage[]> {
+    return await db.select().from(advantages).orderBy(advantages.name);
+  }
+
+  async getAdvantage(id: number): Promise<Advantage | undefined> {
+    const [advantage] = await db.select().from(advantages).where(eq(advantages.id, id));
+    return advantage;
+  }
+
+  async createAdvantage(advantage: InsertAdvantage): Promise<Advantage> {
+    const [newAdvantage] = await db.insert(advantages).values(advantage).returning();
+    return newAdvantage;
+  }
+
+  async updateAdvantage(id: number, updates: Partial<InsertAdvantage>): Promise<Advantage> {
+    const [updated] = await db
+      .update(advantages)
+      .set(updates)
+      .where(eq(advantages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAdvantage(id: number): Promise<void> {
+    // Delete all property-advantage associations
+    await db.delete(propertyAdvantages).where(eq(propertyAdvantages.advantageId, id));
+    // Delete the advantage itself
+    await db.delete(advantages).where(eq(advantages.id, id));
+  }
+
+  // Property advantages methods
+  async getPropertyAdvantages(propertyId: number): Promise<Advantage[]> {
+    const results = await db
+      .select({ advantage: advantages })
+      .from(propertyAdvantages)
+      .innerJoin(advantages, eq(propertyAdvantages.advantageId, advantages.id))
+      .where(eq(propertyAdvantages.propertyId, propertyId));
+    return results.map(r => r.advantage);
+  }
+
+  async addPropertyAdvantage(propertyId: number, advantageId: number): Promise<PropertyAdvantage> {
+    const [result] = await db
+      .insert(propertyAdvantages)
+      .values({ propertyId, advantageId })
+      .returning();
+    return result;
+  }
+
+  async removePropertyAdvantage(propertyId: number, advantageId: number): Promise<void> {
+    await db
+      .delete(propertyAdvantages)
+      .where(and(eq(propertyAdvantages.propertyId, propertyId), eq(propertyAdvantages.advantageId, advantageId)));
   }
 
   // Contact methods
