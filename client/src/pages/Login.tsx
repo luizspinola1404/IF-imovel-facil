@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/Navbar";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function Login() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,16 +28,23 @@ export default function Login() {
 
       if (res.ok) {
         toast({ title: "Logado", description: "Entrando no painel..." });
-        // populate zustand store with current user
+        
+        // Fetch current user and update caches immediately
         try {
           const me = await fetch("/api/auth/user", { credentials: "include" }).then((r) => r.json()).catch(() => null);
-          const { useAuthStore } = await import("../stores/authStore");
-          useAuthStore.getState().setUser(me || null);
+          if (me) {
+            queryClient.setQueryData(["/api/auth/user"], me);
+            const { useAuthStore } = await import("../stores/authStore");
+            useAuthStore.getState().setUser(me);
+          } else {
+            await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+          }
         } catch (e) {
-          // ignore
+          await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
         }
-        // give the backend a moment to set cookie/session
-        setTimeout(() => navigate("/dashboard"), 300);
+        
+        // navigate to dashboard
+        navigate("/dashboard");
         return;
       }
 
