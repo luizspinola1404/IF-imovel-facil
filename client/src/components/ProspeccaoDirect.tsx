@@ -19,11 +19,6 @@ const ESTADOS_BR = [
   "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
 ];
 
-interface IndividualListing {
-  titulo: string;
-  link: string;
-}
-
 interface ScraperResult {
   id: string;
   titulo: string;
@@ -35,7 +30,6 @@ interface ScraperResult {
   estado: string;
   tipo: string;
   modalidade: string;
-  sub_links?: IndividualListing[];
 }
 
 function ResultCard({ resultado }: { resultado: ScraperResult }) {
@@ -63,6 +57,11 @@ function ResultCard({ resultado }: { resultado: ScraperResult }) {
   const buildVivaLink = (kw: string) => {
     const query = `${resultado.tipo} ${resultado.modalidade} ${kw} ${resultado.cidade} ${resultado.estado}`;
     return `https://www.vivareal.com.br/venda/resultados/?q=${encodeURIComponent(query)}`;
+  };
+
+  const buildDuckDuckGoLink = (kw: string) => {
+    const query = `${resultado.tipo} ${resultado.modalidade} ${kw} ${resultado.cidade} ${resultado.estado}`;
+    return `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
   };
 
   const buildGoogleLink = (kw: string) => {
@@ -109,9 +108,7 @@ function ResultCard({ resultado }: { resultado: ScraperResult }) {
             onClick={() => setIsOpen(!isOpen)}
             className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 font-medium select-none"
           >
-            {resultado.sub_links && resultado.sub_links.length > 0
-              ? `Imóveis Particulares Encontrados (${resultado.sub_links.length})`
-              : `Atalhos de busca (${keywords.length})`}
+            Atalhos de busca ({keywords.length})
             <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
           </button>
         </div>
@@ -119,80 +116,60 @@ function ResultCard({ resultado }: { resultado: ScraperResult }) {
 
       {isOpen && (
         <div className="border-t pt-3 mt-1 space-y-3 bg-slate-50 p-3 rounded-lg border">
-          {resultado.sub_links && resultado.sub_links.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-slate-600">
-                Imóveis particulares identificados nesta página:
-              </p>
-              <div className="grid gap-2">
-                {resultado.sub_links.map((sub, idx) => (
-                  <div key={idx} className="bg-white p-3 rounded border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <span className="text-xs font-medium text-slate-700 leading-tight">
-                      {sub.titulo}
-                    </span>
-                    <a
-                      href={sub.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] bg-primary text-white hover:bg-primary/90 px-3 py-1.5 rounded font-semibold transition-colors flex items-center gap-1 shrink-0"
-                    >
-                      Acessar Imóvel
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                ))}
+          <p className="text-xs font-semibold text-slate-600">
+            Links de busca rápida para {resultado.cidade}-{resultado.estado}:
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {keywords.map((kw) => (
+              <div key={kw} className="bg-white p-2 rounded border shadow-sm space-y-2">
+                <span className="text-xs font-bold text-slate-700 capitalize">
+                  Termo: "{kw}"
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  <a
+                    href={buildOLXLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 px-2.5 py-1 rounded border border-purple-200 font-semibold transition-colors"
+                  >
+                    OLX
+                  </a>
+                  <a
+                    href={buildZapLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded border border-blue-200 font-semibold transition-colors"
+                  >
+                    ZAP
+                  </a>
+                  <a
+                    href={buildVivaLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded border border-emerald-200 font-semibold transition-colors"
+                  >
+                    VivaReal
+                  </a>
+                  <a
+                    href={buildDuckDuckGoLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-amber-50 hover:bg-amber-100 text-amber-700 px-2.5 py-1 rounded border border-amber-200 font-semibold transition-colors"
+                  >
+                    DuckDuckGo
+                  </a>
+                  <a
+                    href={buildGoogleLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-red-50 hover:bg-red-100 text-red-700 px-2.5 py-1 rounded border border-red-200 font-semibold transition-colors"
+                  >
+                    Google
+                  </a>
+                </div>
               </div>
-            </div>
-          ) : (
-            <>
-              <p className="text-xs font-semibold text-slate-600">
-                Links de busca rápida para {resultado.cidade}-{resultado.estado}:
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {keywords.map((kw) => (
-                  <div key={kw} className="bg-white p-2 rounded border shadow-sm space-y-2">
-                    <span className="text-xs font-bold text-slate-700 capitalize">
-                      Termo: "{kw}"
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      <a
-                        href={buildOLXLink(kw)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 px-2.5 py-1 rounded border border-purple-200 font-semibold transition-colors"
-                      >
-                        OLX
-                      </a>
-                      <a
-                        href={buildZapLink(kw)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded border border-blue-200 font-semibold transition-colors"
-                      >
-                        ZAP
-                      </a>
-                      <a
-                        href={buildVivaLink(kw)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded border border-emerald-200 font-semibold transition-colors"
-                      >
-                        VivaReal
-                      </a>
-                      <a
-                        href={buildGoogleLink(kw)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] bg-red-50 hover:bg-red-100 text-red-700 px-2.5 py-1 rounded border border-red-200 font-semibold transition-colors"
-                      >
-                        Google
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+            ))}
+          </div>
         </div>
       )}
     </div>
