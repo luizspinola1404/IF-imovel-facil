@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import { execFile } from "child_process";
+import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -282,6 +284,83 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Secret registration error:", err);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Prospecção Web (Rust Scraper)
+  app.post("/api/prospeccao/buscar", isAuthenticated, async (req, res) => {
+    const { estado, cidade, tipo, modalidade } = req.body || {};
+    if (!estado || !cidade || !tipo || !modalidade) {
+      return res.status(400).json({ error: "Campos obrigatórios: estado, cidade, tipo, modalidade" });
+    }
+
+    const binaryPath = process.env.SCRAPER_PATH || 
+      (process.env.NODE_ENV === "production"
+        ? path.resolve(process.cwd(), "scraper/target/release/scraper")
+        : path.resolve(process.cwd(), "scraper/target/debug/scraper"));
+    const args = [
+      "--estado", estado,
+      "--cidade", cidade,
+      "--tipo", tipo,
+      "--modalidade", modalidade
+    ];
+
+    execFile(binaryPath, args, { timeout: 35000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error("Erro ao rodar o scraper Rust:", error, stderr);
+        return res.status(502).json({ error: "Erro interno ao executar a busca de prospecção. Certifique-se de que o geckodriver está disponível." });
+      }
+
+      try {
+        const results = JSON.parse(stdout);
+        res.json(results);
+      } catch (err) {
+        console.error("Erro ao parsear JSON do scraper:", err, stdout);
+        res.status(500).json({ error: "Erro ao interpretar resultados da busca" });
+      }
+    });
+  });
+
+  app.post("/api/prospeccao/salvar-lead", isAuthenticated, async (req, res) => {
+    try {
+      const { titulo, link, trecho, cidade, estado, tipo, modalidade } = req.body || {};
+      if (!titulo) {
+        return res.status(400).json({ error: "Campos obrigatórios faltando" });
+      }
+
+      let category = "house";
+      if (tipo) {
+        const t = tipo.toLowerCase();
+        if (t.includes("apartamento") || t.includes("ap")) {
+          category = "apartment";
+        } else if (t.includes("terreno") || t.includes("lote")) {
+          category = "land";
+        } else if (t.includes("comercial") || t.includes("sala") || t.includes("galpão")) {
+          category = "commercial";
+        }
+      }
+
+      const type = modalidade === "aluguel" ? "rent" : "sale";
+      const desc = `${trecho || "Lead Prospectado automaticamente."}\n\nLink Original: ${link || "Sem link"}\nLocalização: ${cidade} - ${estado}`;
+
+      const newProperty = await storage.createProperty({
+        title: titulo,
+        description: desc,
+        type,
+        category,
+        price: "0",
+        neighborhood: cidade || "Indefinido",
+        bedrooms: 0,
+        bathrooms: 0,
+        area: 0,
+        imageUrls: [],
+        status: "available"
+      });
+
+      res.status(201).json(newProperty);
+    } catch (err) {
+      console.error("Erro ao salvar lead:", err);
+      res.status(500).json({ error: "Erro interno ao salvar lead" });
     }
   });
 

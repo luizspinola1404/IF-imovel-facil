@@ -4,6 +4,7 @@ import { useProperties, useDeleteProperty } from "@/hooks/use-properties";
 import { Navbar } from "@/components/Navbar";
 import { AdminPropertyForm } from "@/components/AdminPropertyForm";
 import { AdvantageManagement } from "@/components/AdvantageManagement";
+import { ProspeccaoDirect } from "@/components/ProspeccaoDirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -170,6 +171,10 @@ export default function Dashboard() {
                     <Gift className="h-4 w-4" />
                     Vantagens
                   </TabsTrigger>
+                  <TabsTrigger value="prospect" className="gap-2">
+                    <Search className="h-4 w-4" />
+                    Prospecção Direct
+                  </TabsTrigger>
                 </TabsList>
               </div>
             </div>
@@ -320,6 +325,12 @@ export default function Dashboard() {
             <TabsContent value="advantages" className="mt-0">
               <div className="p-6">
                 <AdvantageManagement />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="prospect" className="mt-0">
+              <div className="p-6">
+                <ProspeccaoDirect />
               </div>
             </TabsContent>
           </Tabs>
