@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, Bookmark, Loader2, Search as SearchIcon, Building, X } from "lucide-react";
+import { ExternalLink, Bookmark, Loader2, Search as SearchIcon, Building, X, ChevronDown } from "lucide-react";
 
 const TIPOS = ["Casa", "Apartamento", "Terreno", "Comercial"];
 const ESTADOS_BR = [
@@ -30,6 +30,135 @@ interface ScraperResult {
   estado: string;
   tipo: string;
   modalidade: string;
+}
+
+function ResultCard({ resultado }: { resultado: ScraperResult }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const keywords = [
+    "direto proprietario",
+    "particular",
+    "sem corretor",
+    "dono vende"
+  ];
+
+  const buildOLXLink = (kw: string) => {
+    const query = `${resultado.tipo} ${resultado.modalidade} ${kw} ${resultado.cidade} ${resultado.estado}`;
+    return `https://www.olx.com.br/imoveis?q=${encodeURIComponent(query)}`;
+  };
+
+  const buildZapLink = (kw: string) => {
+    const query = `${resultado.tipo} ${resultado.modalidade} ${kw} ${resultado.cidade} ${resultado.estado}`;
+    return `https://www.zapimoveis.com.br/venda/?q=${encodeURIComponent(query)}`;
+  };
+
+  const buildVivaLink = (kw: string) => {
+    const query = `${resultado.tipo} ${resultado.modalidade} ${kw} ${resultado.cidade} ${resultado.estado}`;
+    return `https://www.vivareal.com.br/venda/resultados/?q=${encodeURIComponent(query)}`;
+  };
+
+  const buildGoogleLink = (kw: string) => {
+    const query = `site:olx.com.br OR site:facebook.com/marketplace "${resultado.tipo}" "${resultado.modalidade}" "${kw}" "${resultado.cidade}" "${resultado.estado}"`;
+    return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  };
+
+  return (
+    <div className="bg-white border rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          {resultado.direto_proprietario && (
+            <Badge className="bg-green-600 hover:bg-green-700 text-white border-0 text-[10px] px-2 py-0">
+              Direto com Proprietário
+            </Badge>
+          )}
+          <Badge variant="outline" className="capitalize text-[10px] px-2 py-0">
+            {resultado.modalidade}
+          </Badge>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {resultado.fonte}
+          </span>
+        </div>
+
+        <h3 className="font-semibold text-base text-slate-800 leading-tight">
+          {resultado.titulo}
+        </h3>
+        <p className="text-sm text-muted-foreground line-clamp-2">
+          {resultado.trecho}
+        </p>
+
+        <div className="flex flex-wrap gap-4 pt-1 items-center">
+          <a
+            href={resultado.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary inline-flex items-center gap-1 hover:underline font-medium"
+          >
+            Ver anúncio original
+            <ExternalLink className="h-3 w-3" />
+          </a>
+
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 font-medium select-none"
+          >
+            Atalhos de busca ({keywords.length})
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+          </button>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="border-t pt-3 mt-1 space-y-3 bg-slate-50 p-3 rounded-lg border">
+          <p className="text-xs font-semibold text-slate-600">
+            Links de busca rápida para {resultado.cidade}-{resultado.estado}:
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {keywords.map((kw) => (
+              <div key={kw} className="bg-white p-2 rounded border shadow-sm space-y-2">
+                <span className="text-xs font-bold text-slate-700 capitalize">
+                  Termo: "{kw}"
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  <a
+                    href={buildOLXLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 px-2.5 py-1 rounded border border-purple-200 font-semibold transition-colors"
+                  >
+                    OLX
+                  </a>
+                  <a
+                    href={buildZapLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded border border-blue-200 font-semibold transition-colors"
+                  >
+                    ZAP
+                  </a>
+                  <a
+                    href={buildVivaLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded border border-emerald-200 font-semibold transition-colors"
+                  >
+                    VivaReal
+                  </a>
+                  <a
+                    href={buildGoogleLink(kw)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] bg-red-50 hover:bg-red-100 text-red-700 px-2.5 py-1 rounded border border-red-200 font-semibold transition-colors"
+                  >
+                    Google
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ProspeccaoDirect() {
@@ -375,47 +504,9 @@ export function ProspeccaoDirect() {
           </div>
 
           <div className="grid gap-4">
-            {resultados.map((resultado) => {
-              return (
-                <div
-                  key={resultado.id}
-                  className="bg-white border rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="space-y-2 flex-1">
-                    <div className="flex flex-wrap gap-2 items-center">
-                      {resultado.direto_proprietario && (
-                        <Badge className="bg-green-600 hover:bg-green-700 text-white border-0 text-[10px] px-2 py-0">
-                          Direto com Proprietário
-                        </Badge>
-                      )}
-                      <Badge variant="outline" className="capitalize text-[10px] px-2 py-0">
-                        {resultado.modalidade}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {resultado.fonte}
-                      </span>
-                    </div>
-
-                    <h3 className="font-semibold text-base text-slate-800 leading-tight">
-                      {resultado.titulo}
-                    </h3>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {resultado.trecho}
-                    </p>
-
-                    <a
-                      href={resultado.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary inline-flex items-center gap-1 hover:underline"
-                    >
-                      Ver anúncio original
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                </div>
-              );
-            })}
+            {resultados.map((resultado) => (
+              <ResultCard key={resultado.id} resultado={resultado} />
+            ))}
           </div>
         </div>
       )}
