@@ -11,9 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, Bookmark, BookmarkCheck, Loader2, Search as SearchIcon, Building, X } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { api } from "@shared/routes";
+import { ExternalLink, Bookmark, Loader2, Search as SearchIcon, Building, X } from "lucide-react";
 
 const TIPOS = ["Casa", "Apartamento", "Terreno", "Comercial"];
 const ESTADOS_BR = [
@@ -36,15 +34,12 @@ interface ScraperResult {
 
 export function ProspeccaoDirect() {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [estado, setEstado] = useState("");
   const [cidade, setCidade] = useState("");
   const [tipo, setTipo] = useState("");
   const [modalidade, setModalidade] = useState("");
   const [resultados, setResultados] = useState<ScraperResult[]>([]);
   const [buscando, setBuscando] = useState(false);
-  const [salvandoId, setSalvandoId] = useState<string | null>(null);
-  const [salvos, setSalvos] = useState<Set<string>>(new Set());
 
   // Dynamic cities states
   const [cidades, setCidades] = useState<{ id: number; nome: string }[]>([]);
@@ -183,7 +178,6 @@ export function ProspeccaoDirect() {
 
     setBuscando(true);
     setResultados([]);
-    setSalvos(new Set());
 
     try {
       const res = await fetch("/api/prospeccao/buscar", {
@@ -215,44 +209,6 @@ export function ProspeccaoDirect() {
       });
     } finally {
       setBuscando(false);
-    }
-  };
-
-  const handleSalvar = async (resultado: ScraperResult) => {
-    setSalvandoId(resultado.id);
-
-    try {
-      const res = await fetch("/api/prospeccao/salvar-lead", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(resultado),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || "Erro ao salvar lead");
-      }
-
-      setSalvos((prev) => {
-        const next = new Set(prev);
-        next.add(resultado.id);
-        return next;
-      });
-      toast({
-        title: "Lead salvo",
-        description: "O imóvel foi adicionado com sucesso à sua listagem principal.",
-      });
-
-      queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
-    } catch (err: any) {
-      console.error(err);
-      toast({
-        title: "Erro ao salvar lead",
-        description: err.message || "Não foi possível importar este lead para o banco de dados.",
-        variant: "destructive",
-      });
-    } finally {
-      setSalvandoId(null);
     }
   };
 
@@ -420,9 +376,6 @@ export function ProspeccaoDirect() {
 
           <div className="grid gap-4">
             {resultados.map((resultado) => {
-              const isSaved = salvos.has(resultado.id);
-              const isSaving = salvandoId === resultado.id;
-
               return (
                 <div
                   key={resultado.id}
@@ -460,24 +413,6 @@ export function ProspeccaoDirect() {
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
-
-                  <div className="flex items-center shrink-0">
-                    <Button
-                      onClick={() => handleSalvar(resultado)}
-                      disabled={isSaved || isSaving}
-                      variant={isSaved ? "secondary" : "outline"}
-                      className="w-full md:w-auto gap-2"
-                    >
-                      {isSaving ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : isSaved ? (
-                        <BookmarkCheck className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Bookmark className="h-4 w-4" />
-                      )}
-                      {isSaved ? "Salvo na Lista" : "Salvar Lead"}
-                    </Button>
-                  </div>
                 </div>
               );
             })}
@@ -488,7 +423,7 @@ export function ProspeccaoDirect() {
       {!buscando && resultados.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground border rounded-lg bg-white">
           <Building className="h-12 w-12 opacity-20" />
-          <p className="text-sm font-medium">Nenhuma busca ativa</p>
+          <p className="text-sm font-medium">Nenhuma busca activa</p>
           <p className="text-xs text-center max-w-xs">
             Selecione a localização e o tipo de imóvel nos filtros acima e execute a busca para rastrear leads particulares.
           </p>
@@ -497,3 +432,4 @@ export function ProspeccaoDirect() {
     </div>
   );
 }
+
