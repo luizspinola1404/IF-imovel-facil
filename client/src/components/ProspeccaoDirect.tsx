@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, Bookmark, BookmarkCheck, Loader2, Search as SearchIcon, Building } from "lucide-react";
+import { ExternalLink, Bookmark, BookmarkCheck, Loader2, Search as SearchIcon, Building, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 
@@ -45,6 +45,131 @@ export function ProspeccaoDirect() {
   const [buscando, setBuscando] = useState(false);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [salvos, setSalvos] = useState<Set<string>>(new Set());
+
+  // Dynamic cities states
+  const [cidades, setCidades] = useState<{ id: number; nome: string }[]>([]);
+  const [loadingCidades, setLoadingCidades] = useState(false);
+
+  // Saved searches state
+  const [buscasSalvas, setBuscasSalvas] = useState<{
+    id: string;
+    estado: string;
+    cidade: string;
+    tipo: string;
+    modalidade: string;
+  }[]>(() => {
+    try {
+      const saved = localStorage.getItem("if_imovel_facil_saved_searches");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Fetch cities when estado changes
+  useEffect(() => {
+    if (!estado) {
+      setCidades([]);
+      setCidade("");
+      return;
+    }
+
+    const fetchCidades = async () => {
+      setLoadingCidades(true);
+      try {
+        const res = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${estado}/municipios`);
+        if (!res.ok) throw new Error("Erro ao carregar cidades");
+        const data = await res.json();
+        const sorted = data.sort((a: any, b: any) => a.nome.localeCompare(b.nome));
+        setCidades(sorted);
+
+        // Keep the selected city if it exists in the new list, otherwise reset it
+        setCidade((prev) => {
+          const exists = sorted.some((c: any) => c.nome.toLowerCase() === prev.toLowerCase());
+          return exists ? prev : "";
+        });
+      } catch (err) {
+        console.error(err);
+        toast({
+          title: "Erro ao buscar cidades",
+          description: "Não foi possível conectar à API do IBGE. Você pode digitar a cidade manualmente.",
+          variant: "destructive",
+        });
+        setCidades([]);
+      } finally {
+        setLoadingCidades(false);
+      }
+    };
+
+    fetchCidades();
+  }, [estado]);
+
+  const handleSalvarBusca = () => {
+    if (!estado || !cidade || !tipo || !modalidade) {
+      toast({
+        title: "Campos incompletos",
+        description: "Preencha todos os filtros antes de salvar a busca.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const duplicate = buscasSalvas.some(
+      (b) =>
+        b.estado === estado &&
+        b.cidade.toLowerCase() === cidade.toLowerCase() &&
+        b.tipo === tipo &&
+        b.modalidade === modalidade
+    );
+
+    if (duplicate) {
+      toast({
+        title: "Busca já salva",
+        description: "Esta combinação de filtros já está nas suas buscas salvas.",
+      });
+      return;
+    }
+
+    const novaBusca = {
+      id: Date.now().toString(),
+      estado,
+      cidade,
+      tipo,
+      modalidade,
+    };
+
+    const atualizadas = [novaBusca, ...buscasSalvas];
+    setBuscasSalvas(atualizadas);
+    localStorage.setItem("if_imovel_facil_saved_searches", JSON.stringify(atualizadas));
+
+    toast({
+      title: "Busca salva com sucesso",
+      description: `Busca por ${tipo} em ${cidade}-${estado} (${modalidade}) salva.`,
+    });
+  };
+
+  const handleDeletarBusca = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const atualizadas = buscasSalvas.filter((b) => b.id !== id);
+    setBuscasSalvas(atualizadas);
+    localStorage.setItem("if_imovel_facil_saved_searches", JSON.stringify(atualizadas));
+    toast({
+      title: "Busca removida",
+      description: "Filtro excluído das buscas salvas.",
+    });
+  };
+
+  const handleCarregarBusca = (busca: typeof buscasSalvas[0]) => {
+    setEstado(busca.estado);
+    // Set city directly
+    setCidade(busca.cidade);
+    setTipo(busca.tipo);
+    setModalidade(busca.modalidade);
+    toast({
+      title: "Busca carregada",
+      description: `Filtros para ${busca.cidade}-${busca.estado} aplicados.`,
+    });
+  };
 
   const handleBuscar = async () => {
     if (!estado || !cidade || !tipo || !modalidade) {
@@ -108,13 +233,16 @@ export function ProspeccaoDirect() {
         throw new Error(errText || "Erro ao salvar lead");
       }
 
-      setSalvos((prev) => new Set([...prev, resultado.id]));
+      setSalvos((prev) => {
+        const next = new Set(prev);
+        next.add(resultado.id);
+        return next;
+      });
       toast({
         title: "Lead salvo",
         description: "O imóvel foi adicionado com sucesso à sua listagem principal.",
       });
 
-      // Invalida a query de listagem de imóveis para atualizar a tabela principal
       queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
     } catch (err: any) {
       console.error(err);
@@ -154,12 +282,33 @@ export function ProspeccaoDirect() {
 
         <div className="space-y-2">
           <Label htmlFor="cidade">Cidade</Label>
-          <Input
-            id="cidade"
-            placeholder="Ex: Juazeiro"
-            value={cidade}
-            onChange={(e) => setCidade(e.target.value)}
-          />
+          {loadingCidades ? (
+            <div className="flex items-center h-10 border rounded-md px-3 bg-white text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
+              Buscando cidades...
+            </div>
+          ) : cidades.length > 0 ? (
+            <Select value={cidade} onValueChange={setCidade}>
+              <SelectTrigger id="cidade">
+                <SelectValue placeholder="Selecione a cidade" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[300px] overflow-y-auto">
+                {cidades.map((c) => (
+                  <SelectItem key={c.id} value={c.nome}>
+                    {c.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="cidade"
+              placeholder="Digite a cidade"
+              value={cidade}
+              onChange={(e) => setCidade(e.target.value)}
+              disabled={!estado}
+            />
+          )}
         </div>
 
         <div className="space-y-2">
@@ -189,24 +338,66 @@ export function ProspeccaoDirect() {
           </Select>
         </div>
 
-        <Button
-          onClick={handleBuscar}
-          disabled={buscando}
-          className="md:col-span-4 w-full gap-2 mt-2"
-        >
-          {buscando ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Buscando no DuckDuckGo (iniciando driver oculto)...
-            </>
-          ) : (
-            <>
-              <SearchIcon className="h-4 w-4" />
-              Buscar Proprietários Diretos
-            </>
-          )}
-        </Button>
+        <div className="md:col-span-4 flex gap-3 mt-2">
+          <Button
+            onClick={handleBuscar}
+            disabled={buscando}
+            className="flex-1 gap-2"
+          >
+            {buscando ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Buscando no DuckDuckGo (iniciando driver oculto)...
+              </>
+            ) : (
+              <>
+                <SearchIcon className="h-4 w-4" />
+                Buscar Proprietários Diretos
+              </>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleSalvarBusca}
+            disabled={buscando}
+            className="gap-2 shrink-0 border-slate-300 hover:bg-slate-100"
+            title="Salvar esta busca"
+          >
+            <Bookmark className="h-4 w-4" />
+            <span className="hidden sm:inline">Salvar Filtros</span>
+          </Button>
+        </div>
       </div>
+
+      {buscasSalvas.length > 0 && (
+        <div className="bg-slate-50 p-4 rounded-lg border space-y-3">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Filtros Salvos
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {buscasSalvas.map((busca) => (
+              <div
+                key={busca.id}
+                onClick={() => handleCarregarBusca(busca)}
+                className="group flex items-center gap-2 bg-white hover:bg-slate-100 hover:border-slate-300 border rounded-full pl-3 pr-2 py-1 cursor-pointer text-xs font-medium text-slate-700 shadow-sm transition-all"
+              >
+                <span>
+                  {busca.cidade}-{busca.estado} • {busca.tipo} ({busca.modalidade})
+                </span>
+                <button
+                  onClick={(e) => handleDeletarBusca(busca.id, e)}
+                  className="text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-full p-0.5 transition-colors"
+                  title="Remover busca"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {buscando && (
         <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground border rounded-lg bg-white">
