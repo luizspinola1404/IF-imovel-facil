@@ -336,12 +336,47 @@ export function ProspeccaoDirect() {
       }
 
       const data = await res.json();
-      setResultados(data);
+      
+      // Exclude any results from proprietariodireto.com.br
+      const filteredData = data.filter((r: ScraperResult) => 
+        !r.link.toLowerCase().includes("proprietariodireto.com.br") &&
+        !r.fonte.toLowerCase().includes("proprietariodireto.com.br")
+      );
 
-      if (data.length === 0) {
+      // Construct the custom Proprietário Direto listing link
+      const cleanCidade = cidade
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-");
+
+      const cleanEstado = estado.toLowerCase();
+      const cleanModalidade = modalidade.toLowerCase();
+
+      const proprietarioDiretoUrl = `https://www.proprietariodireto.com.br/${cleanModalidade}/imovel/${cleanEstado}/${cleanCidade}/direto-com-proprietario`;
+
+      const propDiretoResult: ScraperResult = {
+        id: "proprietario-direto-custom-link",
+        titulo: `Imóveis de Proprietários Diretos em ${cidade} - ${estado}`,
+        link: proprietarioDiretoUrl,
+        fonte: "proprietariodireto.com.br",
+        trecho: `Listagem oficial consolidada de proprietários particulares do portal Proprietário Direto para ${tipo} para ${modalidade} em ${cidade}-${estado}.`,
+        direto_proprietario: true,
+        cidade: cidade,
+        estado: estado,
+        tipo: tipo,
+        modalidade: modalidade,
+      };
+
+      const finalResults = [propDiretoResult, ...filteredData];
+      setResultados(finalResults);
+
+      if (finalResults.length === 1 && filteredData.length === 0) {
         toast({
-          title: "Nenhum resultado encontrado",
-          description: "Tente termos diferentes ou mude a modalidade de busca.",
+          title: "Busca finalizada",
+          description: "Nenhum resultado adicional no DuckDuckGo, mas geramos o link direto para o portal Proprietário Direto.",
         });
       }
     } catch (err: any) {
