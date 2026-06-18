@@ -4,7 +4,13 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct IndividualListing {
+    titulo: String,
+    link: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct SearchResult {
     id: String,
     titulo: String,
@@ -16,6 +22,7 @@ struct SearchResult {
     estado: String,
     tipo: String,
     modalidade: String,
+    sub_links: Vec<IndividualListing>,
 }
 
 const DIRETO_KEYWORDS: &[&str] = &[
@@ -54,6 +61,19 @@ const DIRETO_KEYWORDS: &[&str] = &[
 fn classificar_direto(texto: &str) -> bool {
     let lower = texto.to_lowercase();
     DIRETO_KEYWORDS.iter().any(|&kw| lower.contains(kw))
+}
+
+fn is_individual_listing(href: &str) -> bool {
+    let href_lower = href.to_lowercase();
+    let is_olx_listing = href_lower.contains("olx.com.br") && 
+        (href_lower.contains("/imoveis/") || href_lower.contains("/regiao-")) &&
+        href_lower.split('-').last().unwrap_or("").chars().all(|c| c.is_numeric());
+        
+    let is_zap_listing = href_lower.contains("zapimoveis.com.br") && href_lower.contains("/imovel/");
+    let is_viva_listing = href_lower.contains("vivareal.com.br") && href_lower.contains("/imovel/");
+    let is_mercadolivre_listing = href_lower.contains("mercadolivre.com.br") && href_lower.contains("/mlb-");
+
+    is_olx_listing || is_zap_listing || is_viva_listing || is_mercadolivre_listing
 }
 
 fn extrair_fonte(url_str: &str) -> String {
@@ -161,6 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let mut results: Vec<SearchResult> = Vec::new();
+    let mut raw_results = Vec::new();
 
     if let Err(e) = driver.goto(&search_url).await {
         eprintln!("Erro ao navegar até o buscador: {}", e);
@@ -183,25 +204,74 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Err(_) => String::new(),
                         };
 
-                        let is_direct = classificar_direto(&title) || classificar_direto(&snippet);
-                        let source = extrair_fonte(&link);
-                        let id = gerar_id(&title, &link);
-
-                        results.push(SearchResult {
-                            id,
-                            titulo: title,
-                            link,
-                            fonte: source,
-                            trecho: snippet,
-                            direto_proprietario: is_direct,
-                            cidade: cidade.clone(),
-                            estado: estado.clone(),
-                            tipo: tipo.clone(),
-                            modalidade: modalidade.clone(),
-                        });
+                        raw_results.push((title, link, snippet));
                     }
                 }
             }
+        }
+
+        let mut category_pages_visited = 0;
+
+        for (title, link, snippet) in raw_results {
+            let is_direct = classificar_direto(&title) || classificar_direto(&snippet);
+            let source = extrair_fonte(&link);
+            let id = gerar_id(&title, &link);
+
+            let mut sub_links = Vec::new();
+            let mut final_direct = is_direct;
+
+            if is_individual_listing(&link) {
+                final_direct = true;
+            } else {
+                // If it is a category/search list page, visit it to find specific direct-owner properties
+                if (source.contains("olx.com.br")
+                    || source.contains("zapimoveis")
+                    || source.contains("vivareal")
+                    || source.contains("mercadolivre"))
+                    && category_pages_visited < 3
+                {
+                    category_pages_visited += 1;
+                    if let Ok(_) = driver.goto(&link).await {
+                        thread::sleep(Duration::from_millis(3000));
+                        if let Ok(a_elements) = driver.find_all(By::Tag("a")).await {
+                            for a_el in a_elements {
+                                if let (Ok(a_text), Ok(Some(a_href))) = (a_el.text().await, a_el.attr("href").await) {
+                                    if !a_text.is_empty() && !a_href.is_empty() && is_individual_listing(&a_href) {
+                                        if classificar_direto(&a_text) {
+                                            sub_links.push(IndividualListing {
+                                                titulo: a_text.replace("\n", " ").trim().to_string(),
+                                                link: a_href,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Deduplicate sub-links
+                sub_links.sort_by(|a, b| a.link.cmp(&b.link));
+                sub_links.dedup_by(|a, b| a.link == b.link);
+
+                if !sub_links.is_empty() {
+                    final_direct = true;
+                }
+            }
+
+            results.push(SearchResult {
+                id,
+                titulo: title,
+                link,
+                fonte: source,
+                trecho: snippet,
+                direto_proprietario: final_direct,
+                cidade: cidade.clone(),
+                estado: estado.clone(),
+                tipo: tipo.clone(),
+                modalidade: modalidade.clone(),
+                sub_links,
+            });
         }
     }
 
