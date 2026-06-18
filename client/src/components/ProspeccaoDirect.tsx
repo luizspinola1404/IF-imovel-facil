@@ -39,7 +39,9 @@ function ResultCard({ resultado }: { resultado: ScraperResult }) {
     "direto proprietario",
     "particular",
     "sem corretor",
-    "dono vende"
+    "dono vende",
+    "tratar direto",
+    "sem imobiliaria"
   ];
 
   const buildOLXLink = (kw: string) => {
