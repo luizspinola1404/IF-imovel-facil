@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { AdminPropertyForm } from "@/components/AdminPropertyForm";
 import { AdvantageManagement } from "@/components/AdvantageManagement";
 import { ProspeccaoDirect } from "@/components/ProspeccaoDirect";
+import { AdminManagement } from "@/components/AdminManagement";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -50,6 +51,7 @@ import {
   LayoutDashboard,
   Loader2,
   Gift,
+  Shield,
 } from "lucide-react";
 import { type Property } from "@shared/schema";
 import { NumericFormat } from "react-number-format";
@@ -116,7 +118,7 @@ export default function Dashboard() {
             {user?.role === "admin" && (
               <Button
                 variant="ghost"
-                onClick={() => (window.location.href = "/admin/users")}
+                onClick={() => setSelectedTab("admins")}
                 className="border border-border"
                 data-testid="admin-users-btn"
               >
@@ -175,6 +177,12 @@ export default function Dashboard() {
                     <Search className="h-4 w-4" />
                     Prospecção Direct
                   </TabsTrigger>
+                  {user?.role === "admin" && (
+                    <TabsTrigger value="admins" className="gap-2">
+                      <Shield className="h-4 w-4" />
+                      Administradores
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               </div>
             </div>
@@ -333,6 +341,14 @@ export default function Dashboard() {
                 <ProspeccaoDirect />
               </div>
             </TabsContent>
+
+            {user?.role === "admin" && (
+              <TabsContent value="admins" className="mt-0">
+                <div className="p-6">
+                  <AdminManagement />
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </main>
