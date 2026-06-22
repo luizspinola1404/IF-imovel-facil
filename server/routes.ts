@@ -392,9 +392,14 @@ export async function registerRoutes(
 
 async function ensureAdminUser() {
   try {
-    const [existingAdmin] = await db.select().from(users).where(eq(users.role, "admin"));
+    const [existingAdmin] = await db.select().from(users).where(eq(users.username, "admin"));
     if (existingAdmin) {
-      console.log("Admin user already exists");
+      if (existingAdmin.role !== "admin") {
+        await db.update(users).set({ role: "admin" }).where(eq(users.username, "admin"));
+        console.log("Enforced 'admin' role for default 'admin' user");
+      } else {
+        console.log("Admin user 'admin' already exists with correct role");
+      }
       return;
     }
 
