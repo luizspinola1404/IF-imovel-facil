@@ -131,7 +131,10 @@ export default function Home() {
                 />
               </div>
 
-              <div className="flex items-end">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-muted-foreground ml-1 hidden md:block invisible">
+                  Buscar
+                </label>
                 <Button className="w-full h-11 text-base font-semibold shadow-lg shadow-primary/20">
                   <Search className="mr-2 h-5 w-5" />
                   Buscar

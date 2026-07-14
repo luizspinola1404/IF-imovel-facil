@@ -1,5 +1,6 @@
 import { useParams, Link } from "wouter";
 import { useProperty } from "@/hooks/use-properties";
+import { usePropertyAdvantages } from "@/hooks/use-advantages";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -41,8 +42,11 @@ function getYouTubeVideoId(url: string): string | null {
 
 export default function PropertyDetails() {
   const { id } = useParams();
-  const { data: property, isLoading } = useProperty(Number(id));
+  const { data: property, isLoading: isLoadingProperty } = useProperty(Number(id));
+  const { data: advantages, isLoading: isLoadingAdvantages } = usePropertyAdvantages(Number(id));
   const [activeImage, setActiveImage] = useState(0);
+
+  const isLoading = isLoadingProperty || isLoadingAdvantages;
 
   if (isLoading) {
     return (
@@ -260,26 +264,26 @@ export default function PropertyDetails() {
             {property.description}
           </div>
 
-          <div className="mt-8 pt-8 border-t border-border grid grid-cols-1 md:grid-cols-2 gap-4">
-            <h3 className="font-semibold text-foreground text-lg mb-2 col-span-full">
-              Diferenciais
-            </h3>
-            {[
-              "Documentação em dia",
-              "Aceita financiamento",
-              "Próximo a escolas",
-              "Rua pavimentada",
-              "Área de serviço",
-            ].map((item, idx) => (
-              <div
-                key={idx}
-                className="flex items-center text-muted-foreground"
-              >
-                <CheckCircle2 className="h-5 w-5 text-green-500 mr-2" />
-                {item}
-              </div>
-            ))}
-          </div>
+          {advantages && advantages.length > 0 && (
+            <div className="mt-8 pt-8 border-t border-border grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h3 className="font-semibold text-foreground text-lg mb-2 col-span-full">
+                Diferenciais
+              </h3>
+              {advantages.map((item: any) => (
+                <div
+                  key={item.id}
+                  className="flex items-center text-muted-foreground"
+                >
+                  {item.icon ? (
+                    <span className="text-xl mr-2">{item.icon}</span>
+                  ) : (
+                    <CheckCircle2 className="h-5 w-5 text-green-500 mr-2" />
+                  )}
+                  <span>{item.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
 
