@@ -1,6 +1,7 @@
 import { useAdvantages, usePropertyAdvantages, useAddPropertyAdvantage, useRemovePropertyAdvantage } from "@/hooks/use-advantages";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AdvantageIcon } from "./AdvantageIcon";
 import {
   Select,
   SelectContent,
@@ -96,7 +97,10 @@ export function PropertyAdvantagesSelect({ propertyId, onChanged }: PropertyAdva
             ) : (
               availableAdvantages.map((advantage: any) => (
                 <SelectItem key={advantage.id} value={String(advantage.id)}>
-                  {advantage.icon ? `${advantage.icon} ${advantage.name}` : advantage.name}
+                  <span className="flex items-center gap-2">
+                    <AdvantageIcon icon={advantage.icon} className="w-4 text-center text-primary" />
+                    <span>{advantage.name}</span>
+                  </span>
                 </SelectItem>
               ))
             )}
@@ -108,7 +112,7 @@ export function PropertyAdvantagesSelect({ propertyId, onChanged }: PropertyAdva
         <div className="flex flex-wrap gap-2">
           {propertyAdvantages.map((advantage: any) => (
             <Badge key={advantage.id} variant="secondary" className="gap-2 py-1.5">
-              {advantage.icon && <span>{advantage.icon}</span>}
+              <AdvantageIcon icon={advantage.icon} className="w-4 text-center text-primary" />
               {advantage.name}
               <button
                 onClick={() => handleRemove(advantage.id)}

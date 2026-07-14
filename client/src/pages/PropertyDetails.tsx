@@ -2,6 +2,7 @@ import { useParams, Link } from "wouter";
 import { useProperty } from "@/hooks/use-properties";
 import { usePropertyAdvantages } from "@/hooks/use-advantages";
 import { Navbar } from "@/components/Navbar";
+import { AdvantageIcon } from "@/components/AdvantageIcon";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -275,7 +276,9 @@ export default function PropertyDetails() {
                   className="flex items-center text-muted-foreground"
                 >
                   {item.icon ? (
-                    <span className="text-xl mr-2">{item.icon}</span>
+                    <span className="text-lg mr-2 flex items-center justify-center w-6 h-6 text-primary">
+                      <AdvantageIcon icon={item.icon} />
+                    </span>
                   ) : (
                     <CheckCircle2 className="h-5 w-5 text-green-500 mr-2" />
                   )}

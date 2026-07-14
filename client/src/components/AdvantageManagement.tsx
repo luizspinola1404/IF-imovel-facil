@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { AdvantageForm } from "./AdvantageForm";
 import { useToast } from "@/hooks/use-toast";
+import { AdvantageIcon } from "./AdvantageIcon";
 
 export function AdvantageManagement() {
   const { data: advantages, isLoading, error } = useAdvantages();
@@ -112,7 +113,7 @@ export function AdvantageManagement() {
             <Card key={advantage.id}>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  {advantage.icon && <span>{advantage.icon}</span>}
+                  <AdvantageIcon icon={advantage.icon} className="text-lg w-5 text-center text-primary" />
                   {advantage.name}
                 </CardTitle>
               </CardHeader>
