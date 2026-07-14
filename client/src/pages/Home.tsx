@@ -70,35 +70,27 @@ export default function Home() {
                 <label className="text-sm font-semibold text-muted-foreground ml-1">
                   O que você busca?
                 </label>
-<div className="flex bg-secondary/50 p-1 rounded-lg">
-  <button
-    onClick={() => setFilters({ ...filters, type: "sale" })}
-    className={`flex-1 py-3 text-xl font-semibold rounded-lg transition-all ${
-      filters.type === "sale"
-        ? "bg-yellow-400 text-white shadow-md"
-        : "text-yellow-400 hover:bg-yellow-400 hover:text-white"
-    }`}
-  >
-    Comprar
-  </button>
+                <div className="flex bg-secondary/50 p-1 rounded-lg">
+                  <button
+                    onClick={() => setFilters({ ...filters, type: "sale" })}
+                    className={`flex-1 py-3 text-xl font-semibold rounded-lg transition-all ${filters.type === "sale"
+                        ? "bg-yellow-400 text-white shadow-md"
+                        : "text-yellow-400 hover:bg-yellow-400 hover:text-white"
+                      }`}
+                  >
+                    Comprar
+                  </button>
 
-<button
-onClick={() => setFilters({ ...filters, type: "rent" })}
-className={`flex-1 py-3 text-xl font-semibold rounded-lg transition-all ${
-      filters.type === "rent"
-        ? "bg-yellow-400 text-white shadow-md"
-        : "text-yellow-400 hover:bg-yellow-400 hover:text-white"
-    }`}
+                  <button
+                    onClick={() => setFilters({ ...filters, type: "rent" })}
+                    className={`flex-1 py-3 text-xl font-semibold rounded-lg transition-all ${filters.type === "rent"
+                        ? "bg-yellow-400 text-white shadow-md"
+                        : "text-yellow-400 hover:bg-yellow-400 hover:text-white"
+                      }`}
 
->
-
-```
-Alugar
-```
-
-  </button>
-</div>
-</div>
+                  >Alugar</button>
+                </div>
+              </div>
 
 
               <div className="space-y-2">
