@@ -45,6 +45,7 @@ services:
       dockerfile: Dockerfile
     container_name: imovel-facil-app
     restart: unless-stopped
+    init: true
     ports:
       - "127.0.0.1:5000:5000"  # Bind only to localhost for security
     environment:

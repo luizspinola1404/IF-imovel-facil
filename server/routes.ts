@@ -305,7 +305,7 @@ export async function registerRoutes(
       "--modalidade", modalidade
     ];
 
-    execFile(binaryPath, args, { timeout: 35000 }, (error, stdout, stderr) => {
+    execFile(binaryPath, args, { timeout: 60000 }, (error, stdout, stderr) => {
       if (error) {
         console.error("Erro ao rodar o scraper Rust:", error, stderr);
         return res.status(502).json({ error: "Erro interno ao executar a busca de prospecção. Certifique-se de que o geckodriver está disponível." });

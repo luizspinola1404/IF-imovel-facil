@@ -116,7 +116,11 @@ export function ProspeccaoDirect() {
         const res = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${estado}/municipios`);
         if (!res.ok) throw new Error("Erro ao carregar cidades");
         const data = await res.json();
-        const sorted = data.sort((a: any, b: any) => a.nome.localeCompare(b.nome));
+        const sorted = data.sort((a: any, b: any) => {
+          const nameA = a?.nome ?? "";
+          const nameB = b?.nome ?? "";
+          return nameA.localeCompare(nameB);
+        });
         setCidades(sorted);
 
         // Keep the selected city if it exists in the new list, otherwise reset it

@@ -76,6 +76,18 @@ fn gerar_id(titulo: &str, link: &str) -> String {
     format!("{:x}", hash.abs())
 }
 
+fn extrair_url_real(link: &str) -> String {
+    if let Some(pos) = link.find("uddg=") {
+        let start = pos + 5;
+        let end = link[start..].find('&').map(|idx| start + idx).unwrap_or(link.len());
+        let encoded = &link[start..end];
+        if let Ok(decoded) = urlencoding::decode(encoded) {
+            return decoded.into_owned();
+        }
+    }
+    link.to_string()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Parse CLI Arguments
@@ -150,68 +162,118 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 4. Construct query and execute search on standard DuckDuckGo
-    let query_term = format!(
-        "{} {} {} {} direto proprietario OR particular OR sem corretor",
-        tipo, modalidade, cidade, estado
-    );
-    let search_url = format!(
-        "https://duckduckgo.com/?q={}",
-        urlencoding::encode(&query_term)
-    );
-
-    let mut results: Vec<SearchResult> = Vec::new();
-
-    if let Err(e) = driver.goto(&search_url).await {
-        eprintln!("Erro ao navegar até o buscador: {}", e);
-    } else {
-        // Wait for results to render
-        thread::sleep(Duration::from_millis(4000));
-
-        // Find result rows using modern data-testid attributes
-        if let Ok(elements) = driver.find_all(By::Css("[data-testid=\"result\"]")).await {
-            for el in elements {
-                if let Ok(title_el) = el.find(By::Css("[data-testid=\"result-title-a\"]")).await {
-                    if let (Ok(title), Ok(Some(link))) = (title_el.text().await, title_el.attr("href").await) {
-                        // Ignore internal links
-                        if link.contains("duckduckgo.com/") || link.starts_with('/') {
-                            continue;
-                        }
-
-                        let snippet = match el.find(By::Css("[data-testid=\"result-snippet\"]")).await {
-                            Ok(snippet_el) => snippet_el.text().await.unwrap_or_default(),
-                            Err(_) => String::new(),
-                        };
-
-                        let is_direct = classificar_direto(&title) || classificar_direto(&snippet);
-                        let source = extrair_fonte(&link);
-                        let id = gerar_id(&title, &link);
-
-                        results.push(SearchResult {
-                            id,
-                            titulo: title,
-                            link,
-                            fonte: source,
-                            trecho: snippet,
-                            direto_proprietario: is_direct,
-                            cidade: cidade.clone(),
-                            estado: estado.clone(),
-                            tipo: tipo.clone(),
-                            modalidade: modalidade.clone(),
-                        });
-                    }
+    // 4. Setup signal listener for SIGTERM / SIGINT
+    let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            if let (Ok(mut sigterm), Ok(mut sigint)) = (
+                signal(SignalKind::terminate()),
+                signal(SignalKind::interrupt()),
+            ) {
+                tokio::select! {
+                    _ = sigterm.recv() => {}
+                    _ = sigint.recv() => {}
                 }
+            } else {
+                let _ = tokio::signal::ctrl_c().await;
             }
         }
-    }
+        #[cfg(not(unix))]
+        {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+        let _ = tx.send(());
+    });
 
-    // 5. Cleanup browser & geckodriver
+    // 5. Run scraping within a select block to handle termination signals gracefully
+    let res = tokio::select! {
+        r = async {
+            let query_term = format!(
+                "{} {} {} {} direto proprietario OR particular OR sem corretor",
+                tipo, modalidade, cidade, estado
+            );
+            let search_url = format!(
+                "https://html.duckduckgo.com/html/?q={}",
+                urlencoding::encode(&query_term)
+            );
+
+            let mut results: Vec<SearchResult> = Vec::new();
+
+            match driver.goto(&search_url).await {
+                Ok(_) => {
+                    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+                    match driver.find_all(By::Css(".result")).await {
+                        Ok(elements) => {
+                            for el in elements {
+                                if let Ok(title_el) = el.find(By::Css(".result__a")).await {
+                                    if let (Ok(title), Ok(Some(link))) = (title_el.text().await, title_el.attr("href").await) {
+                                        let mut real_link = extrair_url_real(&link);
+                                        if real_link.starts_with("//") {
+                                            real_link = format!("https:{}", real_link);
+                                        }
+                                        if real_link.contains("duckduckgo.com/") || real_link.starts_with('/') {
+                                            continue;
+                                        }
+
+                                        let snippet = match el.find(By::Css(".result__snippet")).await {
+                                            Ok(snippet_el) => snippet_el.text().await.unwrap_or_default(),
+                                            Err(_) => String::new(),
+                                        };
+
+                                        let is_direct = classificar_direto(&title) || classificar_direto(&snippet);
+                                        let source = extrair_fonte(&real_link);
+                                        let id = gerar_id(&title, &real_link);
+
+                                        results.push(SearchResult {
+                                            id,
+                                            titulo: title,
+                                            link: real_link,
+                                            fonte: source,
+                                            trecho: snippet,
+                                            direto_proprietario: is_direct,
+                                            cidade: cidade.clone(),
+                                            estado: estado.clone(),
+                                            tipo: tipo.clone(),
+                                            modalidade: modalidade.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Erro ao buscar resultados: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Erro ao navegar até o buscador: {}", e);
+                }
+            }
+            Ok::<Vec<SearchResult>, Box<dyn std::error::Error>>(results)
+        } => r,
+        _ = &mut rx => {
+            eprintln!("Scraper recebeu sinal de término (SIGTERM/SIGINT). Limpando subprocessos...");
+            Err(Box::new(std::io::Error::new(std::io::ErrorKind::Interrupted, "Interrompido por sinal")) as Box<dyn std::error::Error>)
+        }
+    };
+
+    // 6. Cleanup browser & geckodriver
     let _ = driver.quit().await;
     let _ = geckodriver.kill();
 
-    // 6. Output findings as JSON to stdout
-    let json_output = serde_json::to_string_pretty(&results)?;
-    println!("{}", json_output);
+    match res {
+        Ok(results) => {
+            let json_output = serde_json::to_string_pretty(&results)?;
+            println!("{}", json_output);
+        }
+        Err(e) => {
+            eprintln!("Erro ou interrupção no scraper: {}", e);
+            std::process::exit(1);
+        }
+    }
 
     Ok(())
 }
