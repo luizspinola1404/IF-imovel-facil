@@ -192,7 +192,7 @@ export default function PropertyDetails() {
                   src={`https://www.youtube.com/embed/${youtubeVideoId}`}
                   title="Vídeo do imóvel"
                   frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   className="w-full h-full"
                 />
