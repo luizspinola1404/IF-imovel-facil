@@ -191,11 +191,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = tokio::select! {
         r = async {
             let query_term = format!(
-                "{} {} {} {} direto proprietario OR particular OR sem corretor",
+                "\"{}\" \"{}\" \"{}\" \"{}\" (\"direto com proprietario\" OR \"direto proprietario\" OR \"particular\" OR \"sem corretor\")",
                 tipo, modalidade, cidade, estado
             );
             let search_url = format!(
-                "https://html.duckduckgo.com/html/?q={}",
+                "https://html.duckduckgo.com/html/?q={}&kl=br-pt",
                 urlencoding::encode(&query_term)
             );
 
