@@ -250,7 +250,7 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
                 <FormItem>
                   <FormLabel>Área (m²)</FormLabel>
                   <FormControl>
-                    <Input type="number" {...field} />
+                    <Input type="number" step="any" placeholder="Ex: 250.5" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
