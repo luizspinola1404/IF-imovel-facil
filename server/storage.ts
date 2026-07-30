@@ -200,6 +200,90 @@ export class DatabaseStorage implements IStorage {
     const [newContact] = await db.insert(contacts).values(contact).returning();
     return newContact;
   }
+
+  // Crawler Storage Methods
+  async createCrawlerJob(job: InsertCrawlerJob): Promise<CrawlerJob> {
+    const [newJob] = await db.insert(crawlerJobs).values(job).returning();
+    return newJob;
+  }
+
+  async updateCrawlerJob(id: number, updates: Partial<CrawlerJob>): Promise<CrawlerJob> {
+    const [updated] = await db
+      .update(crawlerJobs)
+      .set(updates)
+      .where(eq(crawlerJobs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getCrawlerJobs(): Promise<CrawlerJob[]> {
+    return await db.select().from(crawlerJobs).orderBy(desc(crawlerJobs.createdAt));
+  }
+
+  async createCrawlerLead(lead: InsertCrawlerLead): Promise<CrawlerLead> {
+    const [newLead] = await db.insert(crawlerLeads).values(lead).returning();
+    return newLead;
+  }
+
+  async getCrawlerLeads(filters?: { jobId?: number; isDirectOwner?: boolean; status?: string }): Promise<CrawlerLead[]> {
+    let query = db.select().from(crawlerLeads);
+    const conditions = [];
+
+    if (filters) {
+      if (filters.jobId !== undefined) conditions.push(eq(crawlerLeads.jobId, filters.jobId));
+      if (filters.isDirectOwner !== undefined) conditions.push(eq(crawlerLeads.isDirectOwner, filters.isDirectOwner));
+      if (filters.status) conditions.push(eq(crawlerLeads.status, filters.status));
+    }
+
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(crawlerLeads.createdAt));
+    }
+
+    return await query.orderBy(desc(crawlerLeads.createdAt));
+  }
+
+  async importCrawlerLead(leadId: number): Promise<Property> {
+    const [lead] = await db.select().from(crawlerLeads).where(eq(crawlerLeads.id, leadId));
+    if (!lead) {
+      throw new Error("Crawler lead not found");
+    }
+
+    let category = "house";
+    if (lead.tipo) {
+      const t = lead.tipo.toLowerCase();
+      if (t.includes("apartamento") || t.includes("ap")) {
+        category = "apartment";
+      } else if (t.includes("terreno") || t.includes("lote")) {
+        category = "land";
+      } else if (t.includes("comercial") || t.includes("sala") || t.includes("galpão")) {
+        category = "commercial";
+      }
+    }
+
+    const type = lead.modalidade === "aluguel" ? "rent" : "sale";
+    const description = `${lead.snippet || "Lead Prospectado automaticamente."}\n\nLink Original: ${lead.url}\nLocalização: ${lead.cidade} - ${lead.estado}\nVendedor: ${lead.sellerName || "N/I"} (${lead.sellerPhone || "Sem telefone"})`;
+
+    const newProperty = await this.createProperty({
+      title: lead.title,
+      description,
+      type,
+      category,
+      price: lead.price ? String(lead.price) : "0",
+      neighborhood: lead.cidade || "Indefinido",
+      bedrooms: 0,
+      bathrooms: 0,
+      area: 0,
+      imageUrls: [],
+      status: "available",
+    });
+
+    await db
+      .update(crawlerLeads)
+      .set({ status: "imported", importedPropertyId: newProperty.id })
+      .where(eq(crawlerLeads.id, leadId));
+
+    return newProperty;
+  }
 }
 
 export const storage = new DatabaseStorage();
