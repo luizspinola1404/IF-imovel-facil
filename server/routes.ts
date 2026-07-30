@@ -5,7 +5,7 @@ import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { db } from "./db";
@@ -26,6 +26,13 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Ensure existing database properties table converts 'area' column to float (real) safely
+  try {
+    await db.execute(sql`ALTER TABLE properties ALTER COLUMN area TYPE real USING area::real;`);
+  } catch {
+    // Ignore if column already converted or table does not exist yet
+  }
+
   // Setup Auth
   await setupAuth(app);
   registerAuthRoutes(app);
