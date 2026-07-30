@@ -59,7 +59,7 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
       description: property?.description || "",
       type: (property?.type as "sale" | "rent") || "sale",
       category: property?.category || "house",
-      price: property?.price ? Number(property.price) : 0,
+      price: property?.price ? String(property.price) : "0",
       neighborhood: property?.neighborhood || "",
       bedrooms: property?.bedrooms || 0,
       bathrooms: property?.bathrooms || 0,
