@@ -11,7 +11,17 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, Bookmark, Loader2, Search as SearchIcon, Building, X } from "lucide-react";
+import {
+  ExternalLink,
+  Bookmark,
+  Loader2,
+  Search as SearchIcon,
+  Building,
+  X,
+  PlusCircle,
+  Filter,
+  CheckCircle,
+} from "lucide-react";
 
 const TIPOS = ["Casa", "Apartamento", "Terreno", "Comercial"];
 const ESTADOS_BR = [
@@ -32,22 +42,58 @@ interface ScraperResult {
   modalidade: string;
 }
 
-function ResultCard({ resultado }: { resultado: ScraperResult }) {
+function ResultCard({
+  resultado,
+  onSalvarLead,
+  salvandoId,
+  salvo,
+}: {
+  resultado: ScraperResult;
+  onSalvarLead: (r: ScraperResult) => void;
+  salvandoId: string | null;
+  salvo: boolean;
+}) {
+  const isSaving = salvandoId === resultado.id;
+
   return (
     <div className="bg-white border rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
       <div className="space-y-2">
-        <div className="flex flex-wrap gap-2 items-center">
-          {resultado.direto_proprietario && (
-            <Badge className="bg-green-600 hover:bg-green-700 text-white border-0 text-[10px] px-2 py-0">
-              Direto com Proprietário
+        <div className="flex flex-wrap gap-2 items-center justify-between">
+          <div className="flex flex-wrap gap-2 items-center">
+            {resultado.direto_proprietario && (
+              <Badge className="bg-green-600 hover:bg-green-700 text-white border-0 text-[10px] px-2 py-0">
+                Direto com Proprietário
+              </Badge>
+            )}
+            <Badge variant="outline" className="capitalize text-[10px] px-2 py-0">
+              {resultado.modalidade}
             </Badge>
-          )}
-          <Badge variant="outline" className="capitalize text-[10px] px-2 py-0">
-            {resultado.modalidade}
-          </Badge>
-          <span className="text-[10px] text-muted-foreground font-mono">
-            {resultado.fonte}
-          </span>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {resultado.fonte}
+            </span>
+          </div>
+
+          <Button
+            size="sm"
+            variant={salvo ? "secondary" : "outline"}
+            disabled={isSaving || salvo}
+            onClick={() => onSalvarLead(resultado)}
+            className="h-7 text-xs gap-1 text-primary hover:bg-primary/10 border-primary/30"
+          >
+            {isSaving ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : salvo ? (
+              <>
+                <CheckCircle className="h-3 w-3 text-green-600" />
+                <span>Salvo</span>
+              </>
+            ) : (
+              <>
+                <PlusCircle className="h-3 w-3" />
+                <span>Salvar Lead</span>
+              </>
+            )}
+          </Button>
         </div>
 
         <h3 className="font-semibold text-base text-slate-800 leading-tight">
@@ -81,6 +127,9 @@ export function ProspeccaoDirect() {
   const [modalidade, setModalidade] = useState("");
   const [resultados, setResultados] = useState<ScraperResult[]>([]);
   const [buscando, setBuscando] = useState(false);
+  const [salvandoId, setSalvandoId] = useState<string | null>(null);
+  const [leadsSalvosIds, setLeadsSalvosIds] = useState<Set<string>>(new Set());
+  const [filtroTexto, setFiltroTexto] = useState("");
 
   // Dynamic cities states
   const [cidades, setCidades] = useState<{ id: number; nome: string }[]>([]);
@@ -123,7 +172,6 @@ export function ProspeccaoDirect() {
         });
         setCidades(sorted);
 
-        // Keep the selected city if it exists in the new list, otherwise reset it
         setCidade((prev) => {
           const exists = sorted.some((c: any) => c.nome.toLowerCase() === prev.toLowerCase());
           return exists ? prev : "";
@@ -201,7 +249,6 @@ export function ProspeccaoDirect() {
 
   const handleCarregarBusca = (busca: typeof buscasSalvas[0]) => {
     setEstado(busca.estado);
-    // Set city directly
     setCidade(busca.cidade);
     setTipo(busca.tipo);
     setModalidade(busca.modalidade);
@@ -223,6 +270,7 @@ export function ProspeccaoDirect() {
 
     setBuscando(true);
     setResultados([]);
+    setFiltroTexto("");
 
     try {
       const res = await fetch("/api/prospeccao/buscar", {
@@ -236,55 +284,18 @@ export function ProspeccaoDirect() {
         throw new Error(errText || "Erro na busca");
       }
 
-      const data = await res.json();
-      
-      // Exclude any results from proprietariodireto.com.br
-      const filteredData = data.filter((r: ScraperResult) => 
-        !r.link.toLowerCase().includes("proprietariodireto.com.br") &&
-        !r.fonte.toLowerCase().includes("proprietariodireto.com.br")
-      );
+      const data: ScraperResult[] = await res.json();
+      setResultados(data);
 
-      // Construct the custom Proprietário Direto listing link
-      const cleanCidade = cidade
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9\s-]/g, "")
-        .trim()
-        .replace(/\s+/g, "-");
-
-      const cleanEstado = estado.toLowerCase();
-      const cleanModalidade = modalidade.toLowerCase();
-
-      const proprietarioDiretoUrl = `https://www.proprietariodireto.com.br/${cleanModalidade}/imovel/${cleanEstado}/${cleanCidade}/direto-com-proprietario`;
-
-      const propDiretoResult: ScraperResult = {
-        id: "proprietario-direto-custom-link",
-        titulo: `Imóveis de Proprietários Diretos em ${cidade} - ${estado}`,
-        link: proprietarioDiretoUrl,
-        fonte: "proprietariodireto.com.br",
-        trecho: `Listagem oficial consolidada de proprietários particulares do portal Proprietário Direto para ${tipo} para ${modalidade} em ${cidade}-${estado}.`,
-        direto_proprietario: true,
-        cidade: cidade,
-        estado: estado,
-        tipo: tipo,
-        modalidade: modalidade,
-      };
-
-      const finalResults = [propDiretoResult, ...filteredData];
-      setResultados(finalResults);
-
-      if (finalResults.length === 1 && filteredData.length === 0) {
-        toast({
-          title: "Busca finalizada",
-          description: "Nenhum resultado adicional no DuckDuckGo, mas geramos o link direto para o portal Proprietário Direto.",
-        });
-      }
+      toast({
+        title: "Busca concluída!",
+        description: `${data.length} anúncios/fontes de proprietários diretos encontrados em ${cidade}-${estado}.`,
+      });
     } catch (err: any) {
       console.error(err);
       toast({
         title: "Erro na busca",
-        description: err.message || "Não foi possível conectar ao robô de busca. Certifique-se de que o geckodriver está disponível.",
+        description: err.message || "Não foi possível realizar a busca de prospecção.",
         variant: "destructive",
       });
     } finally {
@@ -292,12 +303,53 @@ export function ProspeccaoDirect() {
     }
   };
 
+  const handleSalvarLead = async (resultado: ScraperResult) => {
+    setSalvandoId(resultado.id);
+    try {
+      const res = await fetch("/api/prospeccao/salvar-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(resultado),
+      });
+
+      if (!res.ok) {
+        throw new Error("Erro ao registrar lead no banco");
+      }
+
+      setLeadsSalvosIds((prev) => new Set(prev).add(resultado.id));
+
+      toast({
+        title: "Lead Salvo!",
+        description: `"${resultado.titulo}" foi cadastrado no sistema.`,
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "Erro ao salvar lead",
+        description: err.message || "Não foi possível salvar este lead.",
+        variant: "destructive",
+      });
+    } finally {
+      setSalvandoId(null);
+    }
+  };
+
+  const resultadosFiltrados = resultados.filter((r) => {
+    if (!filtroTexto.trim()) return true;
+    const query = filtroTexto.toLowerCase();
+    return (
+      r.titulo.toLowerCase().includes(query) ||
+      r.trecho.toLowerCase().includes(query) ||
+      r.fonte.toLowerCase().includes(query)
+    );
+  });
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold">Prospecção de Imóveis (Direct proprietário)</h2>
         <p className="text-sm text-muted-foreground">
-          Pesquisa por anúncios em portais imobiliários utilizando automação para encontrar listagens de proprietários particulares.
+          Pesquisa por anúncios em portais imobiliários e na web para encontrar listagens de proprietários particulares em tempo real.
         </p>
       </div>
 
@@ -378,12 +430,12 @@ export function ProspeccaoDirect() {
           <Button
             onClick={handleBuscar}
             disabled={buscando}
-            className="flex-1 gap-2"
+            className="flex-1 gap-2 bg-primary hover:bg-primary/90"
           >
             {buscando ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Buscando no DuckDuckGo (iniciando driver oculto)...
+                Buscando em tempo real...
               </>
             ) : (
               <>
@@ -438,25 +490,43 @@ export function ProspeccaoDirect() {
       {buscando && (
         <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground border rounded-lg bg-white">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm font-medium">Iniciando o navegador e executando buscas de prospecção...</p>
-          <p className="text-xs">Isso pode levar de 5 a 20 segundos enquanto a automação filtra os anúncios.</p>
+          <p className="text-sm font-medium">Consultando portais imobiliários e listagens de proprietários particulares...</p>
+          <p className="text-xs">Isso leva apenas de 1 a 3 segundos.</p>
         </div>
       )}
 
       {!buscando && resultados.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex justify-between items-center px-1">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Resultados da prospecção ({resultados.length})
-            </span>
-            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200">
-              {resultados.filter((r) => r.direto_proprietario).length} identificados como proprietário direto
-            </span>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Resultados ({resultadosFiltrados.length} de {resultados.length})
+              </span>
+              <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200">
+                {resultados.filter((r) => r.direto_proprietario).length} proprietários diretos
+              </span>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Filtrar nos resultados..."
+                value={filtroTexto}
+                onChange={(e) => setFiltroTexto(e.target.value)}
+                className="pl-8 h-8 text-xs bg-white"
+              />
+            </div>
           </div>
 
           <div className="grid gap-4">
-            {resultados.map((resultado) => (
-              <ResultCard key={resultado.id} resultado={resultado} />
+            {resultadosFiltrados.map((resultado) => (
+              <ResultCard
+                key={resultado.id}
+                resultado={resultado}
+                onSalvarLead={handleSalvarLead}
+                salvandoId={salvandoId}
+                salvo={leadsSalvosIds.has(resultado.id)}
+              />
             ))}
           </div>
         </div>
@@ -465,7 +535,7 @@ export function ProspeccaoDirect() {
       {!buscando && resultados.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground border rounded-lg bg-white">
           <Building className="h-12 w-12 opacity-20" />
-          <p className="text-sm font-medium">Nenhuma busca activa</p>
+          <p className="text-sm font-medium">Nenhuma busca ativa</p>
           <p className="text-xs text-center max-w-xs">
             Selecione a localização e o tipo de imóvel nos filtros acima e execute a busca para rastrear leads particulares.
           </p>
@@ -474,4 +544,3 @@ export function ProspeccaoDirect() {
     </div>
   );
 }
-

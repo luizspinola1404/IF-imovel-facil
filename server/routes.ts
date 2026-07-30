@@ -13,6 +13,7 @@ import { users } from "@shared/models/auth";
 import { scryptSync, randomBytes } from "crypto";
 import multer from "multer";
 import { ensureBucketExists, uploadImage, deleteObjects, isMinioUrl, extractKeyFromUrl } from "./minio";
+import { buscarImoveisProspeccao } from "./services/prospeccao";
 
 // Helper function to hash passwords using Node.js crypto  
 function hashPassword(password: string): string {
@@ -59,9 +60,11 @@ export async function registerRoutes(
       res.status(201).json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {
+        const firstErr = err.errors[0];
+        const fieldName = firstErr.path.join('.');
         return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+          message: firstErr.message,
+          field: fieldName,
         });
       }
       throw err;
@@ -75,9 +78,11 @@ export async function registerRoutes(
       res.json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {
+        const firstErr = err.errors[0];
+        const fieldName = firstErr.path.join('.');
         return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+          message: firstErr.message,
+          field: fieldName,
         });
       }
       throw err;
@@ -287,38 +292,20 @@ export async function registerRoutes(
     }
   });
 
-  // Prospecção Web (Rust Scraper)
+  // Prospecção Web Nativa (TypeScript)
   app.post("/api/prospeccao/buscar", isAuthenticated, async (req, res) => {
     const { estado, cidade, tipo, modalidade } = req.body || {};
     if (!estado || !cidade || !tipo || !modalidade) {
       return res.status(400).json({ error: "Campos obrigatórios: estado, cidade, tipo, modalidade" });
     }
 
-    const binaryPath = process.env.SCRAPER_PATH || 
-      (process.env.NODE_ENV === "production"
-        ? path.resolve(process.cwd(), "scraper/target/release/scraper")
-        : path.resolve(process.cwd(), "scraper/target/debug/scraper"));
-    const args = [
-      "--estado", estado,
-      "--cidade", cidade,
-      "--tipo", tipo,
-      "--modalidade", modalidade
-    ];
-
-    execFile(binaryPath, args, { timeout: 60000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error("Erro ao rodar o scraper Rust:", error, stderr);
-        return res.status(502).json({ error: "Erro interno ao executar a busca de prospecção. Certifique-se de que o geckodriver está disponível." });
-      }
-
-      try {
-        const results = JSON.parse(stdout);
-        res.json(results);
-      } catch (err) {
-        console.error("Erro ao parsear JSON do scraper:", err, stdout);
-        res.status(500).json({ error: "Erro ao interpretar resultados da busca" });
-      }
-    });
+    try {
+      const results = await buscarImoveisProspeccao({ estado, cidade, tipo, modalidade });
+      res.json(results);
+    } catch (err) {
+      console.error("Erro na busca de prospecção:", err);
+      res.status(500).json({ error: "Erro ao interpretar resultados da busca" });
+    }
   });
 
   app.post("/api/prospeccao/salvar-lead", isAuthenticated, async (req, res) => {

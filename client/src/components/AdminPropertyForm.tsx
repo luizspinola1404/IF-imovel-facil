@@ -74,10 +74,13 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
   const imageUrlsValue = form.watch("imageUrls");
 
   const onSubmit = async (data: FormValues) => {
-    // Convert form data to API shape
+    // Convert form data to API shape, allowing decimals/floats for area
     const payload = {
       ...data,
       price: String(data.price),
+      bedrooms: Number(data.bedrooms) || 0,
+      bathrooms: Number(data.bathrooms) || 0,
+      area: Number(data.area) || 0,
       imageUrls: (data.imageUrls || "").toString().split(',').map(s => s.trim()).filter(Boolean),
     } as any;
     
@@ -95,9 +98,24 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
       onSuccess?.();
     } catch (error: any) {
       console.error("Save property error:", error);
-      const message = error?.message || error?.body?.message || "Falha ao salvar imóvel. Verifique os dados.";
+      let message = error?.message || error?.body?.message || "Falha ao salvar imóvel. Verifique os dados.";
+      
+      // Try to parse raw Zod error JSON if returned
+      try {
+        if (typeof message === "string" && message.trim().startsWith("[")) {
+          const parsed = JSON.parse(message);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const first = parsed[0];
+            const fieldName = first.path ? first.path.join('.') : '';
+            message = `${fieldName ? `Erro no campo '${fieldName}': ` : ''}${first.message}`;
+          }
+        }
+      } catch {
+        // use fallback message
+      }
+
       toast({ 
-        title: "Erro", 
+        title: "Erro de Validação", 
         description: message, 
         variant: "destructive" 
       });

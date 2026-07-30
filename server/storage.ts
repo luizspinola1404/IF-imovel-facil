@@ -5,6 +5,8 @@ import {
   users,
   advantages,
   propertyAdvantages,
+  crawlerJobs,
+  crawlerLeads,
   type Property,
   type InsertProperty,
   type UpdatePropertyRequest,
@@ -16,6 +18,10 @@ import {
   type InsertAdvantage,
   type PropertyAdvantage,
   type InsertPropertyAdvantage,
+  type CrawlerJob,
+  type InsertCrawlerJob,
+  type CrawlerLead,
+  type InsertCrawlerLead,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, or } from "drizzle-orm";
 import { IAuthStorage } from "./replit_integrations/auth/storage";
@@ -36,6 +42,13 @@ export interface IStorage extends IAuthStorage {
   getPropertyAdvantages(propertyId: number): Promise<Advantage[]>;
   addPropertyAdvantage(propertyId: number, advantageId: number): Promise<PropertyAdvantage>;
   removePropertyAdvantage(propertyId: number, advantageId: number): Promise<void>;
+  // Crawler Storage Methods
+  createCrawlerJob(job: InsertCrawlerJob): Promise<CrawlerJob>;
+  updateCrawlerJob(id: number, updates: Partial<CrawlerJob>): Promise<CrawlerJob>;
+  getCrawlerJobs(): Promise<CrawlerJob[]>;
+  createCrawlerLead(lead: InsertCrawlerLead): Promise<CrawlerLead>;
+  getCrawlerLeads(filters?: { jobId?: number; isDirectOwner?: boolean; status?: string }): Promise<CrawlerLead[]>;
+  importCrawlerLead(leadId: number): Promise<Property>;
 }
 
 export class DatabaseStorage implements IStorage {
