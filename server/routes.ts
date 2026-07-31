@@ -13,7 +13,7 @@ import { users } from "@shared/models/auth";
 import { scryptSync, randomBytes } from "crypto";
 import multer from "multer";
 import { ensureBucketExists, uploadImage, deleteObjects, isMinioUrl, extractKeyFromUrl } from "./minio";
-import { buscarImoveisProspeccao } from "./services/prospeccao";
+import { sincronizarLoteProspeccao, listarLeadsProspeccao } from "./services/prospeccao";
 
 // Helper function to hash passwords using Node.js crypto  
 function hashPassword(password: string): string {
@@ -323,7 +323,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/prospeccao/leads", isAuthenticated, async (req, res) => {
+  app.get("/api/prospeccao/leads", async (req, res) => {
     const { estado, cidade, tipo, modalidade, status } = req.query as any;
 
     try {
