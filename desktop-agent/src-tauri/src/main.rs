@@ -51,9 +51,11 @@ pub struct ScrapedItem {
 pub struct SyncResult {
     pub success: bool,
     pub batch_id: String,
+    pub target_url: String,
     pub total_encontrados: usize,
     pub novos_encontrados: usize,
     pub removidos_encontrados: usize,
+    pub logs: Vec<String>,
     pub message: String,
 }
 
@@ -64,88 +66,21 @@ pub struct AppState {
 fn normalizar_cidade(cidade: &str) -> String {
     cidade
         .to_lowercase()
-        .replace("ã", "a")
-        .replace("á", "a")
-        .replace("â", "a")
-        .replace("é", "e")
-        .replace("ê", "e")
-        .replace("í", "i")
-        .replace("ó", "o")
-        .replace("ô", "o")
-        .replace("õ", "o")
-        .replace("ú", "u")
-        .replace("ç", "c")
+        .replace('ã', "a")
+        .replace('á', "a")
+        .replace('â', "a")
+        .replace('é', "e")
+        .replace('ê', "e")
+        .replace('í', "i")
+        .replace('ó', "o")
+        .replace('ô', "o")
+        .replace('õ', "o")
+        .replace('ú', "u")
+        .replace('ç', "c")
         .trim()
         .split_whitespace()
         .collect::<Vec<&str>>()
         .join("+")
-}
-
-async fn raspar_olx(estado: &str, cidade: &str, tipo: &str, modalidade: &str) -> Vec<ScrapedItem> {
-    let clean_uf = estado.to_lowercase();
-    let clean_city = normalizar_cidade(cidade);
-    let clean_tipo = match tipo.to_lowercase().as_str() {
-        t if t.contains("casa") => "casas",
-        t if t.contains("ap") => "apartamentos",
-        t if t.contains("terr") || t.contains("lote") => "terrenos-e-lotes",
-        _ => "imoveis",
-    };
-    let clean_mod = if modalidade.to_lowercase() == "aluguel" { "aluguel" } else { "venda" };
-
-    let url = format!(
-        "https://www.olx.com.br/imoveis/{}/{}/estado-{}?f=p&q={}",
-        clean_mod, clean_tipo, clean_uf, clean_city
-    );
-
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-        .build();
-
-    let mut items = Vec::new();
-    if let Ok(client) = client {
-        if let Ok(resp) = client.get(&url).send().await {
-            if let Ok(html) = resp.text().await {
-                let document = scraper::Html::parse_document(&html);
-                let selector = scraper::Selector::parse("a[href]").unwrap();
-
-                let mut seen = std::collections::HashSet::new();
-                for element in document.select(&selector) {
-                    if let Some(href) = element.value().attr("href") {
-                        if href.contains("olx.com.br") && href.contains("/imoveis/") && href.contains("-") {
-                            if !seen.contains(href) {
-                                seen.insert(href.to_string());
-                                let full_link = if href.starts_with("http") {
-                                    href.to_string()
-                                } else {
-                                    format!("https://www.olx.com.br{}", href)
-                                };
-
-                                let title_text = element.text().collect::<String>().trim().to_string();
-                                let title = if title_text.len() > 5 {
-                                    title_text
-                                } else {
-                                    format!("Imóvel Direto com Proprietário em {}-{}", cidade, estado)
-                                };
-
-                                let raw_id = format!("{}{}", title, full_link);
-                                let id = format!("{:x}", md5_hash(&raw_id));
-
-                                items.push(ScrapedItem {
-                                    id,
-                                    titulo: title,
-                                    link: full_link,
-                                    fonte: "OLX Brasil (Particular)".to_string(),
-                                    trecho: format!("Imóvel de proprietário particular capturado em {}-{}.", cidade, estado),
-                                    direto_proprietario: true,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    items
 }
 
 fn md5_hash(input: &str) -> u64 {
@@ -156,11 +91,137 @@ fn md5_hash(input: &str) -> u64 {
     hash
 }
 
-async fn enviar_para_servidor(config: &AgentConfig, items: Vec<ScrapedItem>) -> Result<SyncResult, String> {
+fn construir_url_olx(estado: &str, tipo: &str, modalidade: &str, cidade: &str, apenas_particular: bool) -> String {
+    let cidade_input = cidade.trim();
+    if cidade_input.starts_with("http://") || cidade_input.starts_with("https://") {
+        let mut url = cidade_input.to_string();
+        if apenas_particular && !url.contains("f=p") {
+            let sep = if url.contains('?') { "&" } else { "?" };
+            url.push_str(sep);
+            url.push_str("f=p");
+        }
+        return url;
+    }
+
+    let clean_uf = estado.to_lowercase().replace("estado-", "");
+    let uf_param = if !clean_uf.is_empty() && clean_uf != "br" && clean_uf != "todos" {
+        format!("estado-{}", clean_uf)
+    } else {
+        "".to_string()
+    };
+
+    let clean_tipo = match tipo.to_lowercase().as_str() {
+        t if t.contains("casa") => "casas",
+        t if t.contains("ap") => "apartamentos",
+        t if t.contains("terr") || t.contains("lote") => "terrenos-e-lotes",
+        t if t.contains("comercial") || t.contains("sala") => "comercio-e-industria",
+        _ => "imoveis",
+    };
+
+    let clean_mod = if modalidade.to_lowercase() == "aluguel" { "aluguel" } else { "venda" };
+
+    let mut parts = vec!["https://www.olx.com.br/imoveis".to_string(), clean_mod.to_string()];
+    if clean_tipo != "imoveis" {
+        parts.push(clean_tipo.to_string());
+    }
+    if !uf_param.is_empty() {
+        parts.push(uf_param);
+    }
+
+    let mut url = parts.join("/");
+    let mut params = Vec::new();
+    if apenas_particular {
+        params.push("f=p".to_string());
+    }
+    if !cidade_input.is_empty() {
+        let clean_city = normalizar_cidade(cidade_input);
+        params.push(format!("q={}", clean_city));
+    }
+
+    if !params.is_empty() {
+        url.push('?');
+        url.push_str(&params.join("&"));
+    }
+
+    url
+}
+
+async fn raspar_olx(
+    estado: &str,
+    cidade: &str,
+    tipo: &str,
+    modalidade: &str,
+    logs: &mut Vec<String>,
+) -> (Vec<ScrapedItem>, String) {
+    let target_url = construir_url_olx(estado, tipo, modalidade, cidade, true);
+    logs.push(format!("🔎 [Passo 1] URL Alvo Gerada com Filtro Particular (f=p): {}", target_url));
+    logs.push("🌐 [Passo 2] Requisitando anúncios de particulares...".to_string());
+
+    let script_candidates = [
+        "scraper_helper.py",
+        "src-tauri/scraper_helper.py",
+        "desktop-agent/src-tauri/scraper_helper.py",
+    ];
+
+    let mut script_file = "scraper_helper.py";
+    for cand in script_candidates {
+        if std::path::Path::new(cand).exists() {
+            script_file = cand;
+            break;
+        }
+    }
+
+    let output = std::process::Command::new("python3")
+        .arg(script_file)
+        .arg(estado)
+        .arg(cidade)
+        .arg(tipo)
+        .arg(modalidade)
+        .output();
+
+    let mut items = Vec::new();
+    let mut final_target_url = target_url.clone();
+
+    if let Ok(out) = output {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&stdout) {
+            if let Some(t_url) = parsed["target_url"].as_str() {
+                final_target_url = t_url.to_string();
+            }
+            if let Some(arr) = parsed["items"].as_array() {
+                for it in arr {
+                    items.push(ScrapedItem {
+                        id: it["id"].as_str().unwrap_or("").to_string(),
+                        titulo: it["titulo"].as_str().unwrap_or("").to_string(),
+                        link: it["link"].as_str().unwrap_or("").to_string(),
+                        fonte: it["fonte"].as_str().unwrap_or("OLX Particular").to_string(),
+                        trecho: it["trecho"].as_str().unwrap_or("").to_string(),
+                        direto_proprietario: true,
+                    });
+                }
+            }
+            logs.push(format!("✨ Raspagem concluída! Extraídos {} anúncios de imóveis particulares da OLX.", items.len()));
+        } else {
+            logs.push(format!("⚠️ Resposta inválida: {}", stdout));
+        }
+    } else {
+        logs.push("❌ Não foi possível iniciar o processo de raspagem.".to_string());
+    }
+
+    (items, final_target_url)
+}
+
+async fn enviar_para_servidor(
+    config: &AgentConfig,
+    items: Vec<ScrapedItem>,
+    target_url: String,
+    mut logs: Vec<String>,
+) -> Result<SyncResult, String> {
     let base_url = config.server_url.trim_end_matches('/');
     let sync_endpoint = format!("{}/api/prospeccao/sync", base_url);
-
     let batch_id = format!("desktop-{}", chrono::Utc::now().timestamp());
+
+    logs.push(format!("🚀 Sincronizando lote de {} imóveis com o servidor ({})", items.len(), sync_endpoint));
 
     let payload = serde_json::json!({
         "batchId": batch_id,
@@ -173,35 +234,50 @@ async fn enviar_para_servidor(config: &AgentConfig, items: Vec<ScrapedItem>) -> 
     });
 
     let client = reqwest::Client::new();
-    let req = client.post(&sync_endpoint).json(&payload);
-
-    match req.send().await {
+    match client.post(&sync_endpoint).json(&payload).send().await {
         Ok(resp) => {
             if resp.status().is_success() {
                 if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    let total = json["totalEncontrados"].as_u64().unwrap_or(items.len() as u64) as usize;
+                    let novos = json["novosEncontrados"].as_u64().unwrap_or(0) as usize;
+                    let removidos = json["removidosEncontrados"].as_u64().unwrap_or(0) as usize;
+
+                    logs.push(format!("📊 Servidor processou com sucesso: Total: {}, Novos ⭐: {}, Desativados ❌: {}.", total, novos, removidos));
+
                     Ok(SyncResult {
                         success: true,
                         batch_id: batch_id.clone(),
-                        total_encontrados: json["totalEncontrados"].as_u64().unwrap_or(0) as usize,
-                        novos_encontrados: json["novosEncontrados"].as_u64().unwrap_or(0) as usize,
-                        removidos_encontrados: json["removidosEncontrados"].as_u64().unwrap_or(0) as usize,
+                        target_url,
+                        total_encontrados: total,
+                        novos_encontrados: novos,
+                        removidos_encontrados: removidos,
+                        logs,
                         message: format!("Sincronizado com sucesso com {}", config.server_url),
                     })
                 } else {
+                    logs.push("📊 Sincronizado com sucesso com o servidor!".to_string());
                     Ok(SyncResult {
                         success: true,
                         batch_id,
+                        target_url,
                         total_encontrados: items.len(),
                         novos_encontrados: 0,
                         removidos_encontrados: 0,
+                        logs,
                         message: "Sincronizado com o servidor.".to_string(),
                     })
                 }
             } else {
-                Err(format!("Servidor respondeu com código de erro HTTP {}", resp.status()))
+                let err_msg = format!("Servidor respondeu HTTP {}", resp.status());
+                logs.push(format!("❌ Erro no servidor: {}", err_msg));
+                Err(err_msg)
             }
         }
-        Err(err) => Err(format!("Falha de conexão com o servidor {}: {}", config.server_url, err)),
+        Err(err) => {
+            let err_msg = format!("Erro ao conectar com {}: {}", config.server_url, err);
+            logs.push(format!("❌ {}", err_msg));
+            Err(err_msg)
+        }
     }
 }
 
@@ -220,8 +296,9 @@ fn save_config(config: AgentConfig, state: State<'_, AppState>) -> Result<String
 #[tauri::command]
 async fn execute_prospeccao_now(state: State<'_, AppState>) -> Result<SyncResult, String> {
     let cfg = state.config.lock().unwrap().clone();
-    let items = raspar_olx(&cfg.estado, &cfg.cidade, &cfg.tipo, &cfg.modalidade).await;
-    enviar_para_servidor(&cfg, items).await
+    let mut logs = Vec::new();
+    let (items, target_url) = raspar_olx(&cfg.estado, &cfg.cidade, &cfg.tipo, &cfg.modalidade, &mut logs).await;
+    enviar_para_servidor(&cfg, items, target_url, logs).await
 }
 
 fn main() {

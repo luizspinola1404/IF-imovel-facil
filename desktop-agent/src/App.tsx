@@ -25,9 +25,11 @@ interface AgentConfig {
 interface SyncResult {
   success: boolean;
   batch_id: string;
+  target_url?: string;
   total_encontrados: number;
   novos_encontrados: number;
   removidos_encontrados: number;
+  logs?: string[];
   message: string;
 }
 
@@ -86,40 +88,52 @@ export function App() {
 
   const handleExecutarAgora = async () => {
     setExecutando(true);
-    adicionarLog(`Iniciando raspagem de imóveis em ${config.cidade}-${config.estado} para a OLX...`);
+    adicionarLog(`Iniciando prospecção de imóveis em ${config.cidade}-${config.estado} na OLX...`);
 
     try {
-      const targetUrl = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/sync`;
-      adicionarLog(`Enviando dados capturados para a API ${targetUrl}...`);
+      let resObj: SyncResult;
 
-      const res = await fetch(targetUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          batchId: `desktop-${Date.now()}`,
-          fonte: "olx.com.br",
-          estado: config.estado,
-          cidade: config.cidade,
-          tipo: config.tipo,
-          modalidade: config.modalidade,
-          items: [],
-        }),
-      });
+      if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
+        adicionarLog(`Executando motor nativo de raspagem em Rust...`);
+        const { invoke } = await import("@tauri-apps/api/core");
+        resObj = await invoke<SyncResult>("execute_prospeccao_now");
 
-      if (res.ok) {
+        if (Array.isArray(resObj.logs)) {
+          resObj.logs.forEach((stepLog) => adicionarLog(stepLog));
+        }
+      } else {
+        const targetUrl = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/sync`;
+        adicionarLog(`Enviando dados capturados para a API ${targetUrl}...`);
+
+        const res = await fetch(targetUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            batchId: `desktop-${Date.now()}`,
+            fonte: "olx.com.br",
+            estado: config.estado,
+            cidade: config.cidade,
+            tipo: config.tipo,
+            modalidade: config.modalidade,
+            items: [],
+          }),
+        });
+
+        if (!res.ok) throw new Error(`Servidor respondeu HTTP ${res.status}`);
         const data = await res.json();
-        const resObj: SyncResult = {
+        resObj = {
           success: true,
           batch_id: data.batchRecord?.batchId || "batch-desktop",
+          target_url: targetUrl,
           total_encontrados: data.totalEncontrados || 0,
           novos_encontrados: data.novosEncontrados || 0,
           removidos_encontrados: data.removidosEncontrados || 0,
+          logs: [],
           message: `Sincronização concluída com o servidor ${config.server_url}!`,
         };
-        adicionarLog(`✅ Concluído! ${resObj.novos_encontrados} novos imóveis descobertos, ${resObj.removidos_encontrados} desativados.`);
-      } else {
-        throw new Error(`Servidor respondeu HTTP ${res.status}`);
       }
+
+      adicionarLog(`🎉 Finalizado! ${resObj.novos_encontrados} novos imóveis descobertos, ${resObj.removidos_encontrados} removidos da OLX.`);
     } catch (err: any) {
       adicionarLog(`❌ Erro de execução: ${err.message || err}`);
     } finally {
@@ -215,12 +229,12 @@ export function App() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-medium">Cidade</label>
+              <label className="text-xs text-slate-400 font-medium">Cidade ou URL Regional OLX</label>
               <input
                 type="text"
                 value={config.cidade}
                 onChange={(e) => setConfig({ ...config, cidade: e.target.value })}
-                placeholder="Ex: São Mateus"
+                placeholder="Ex: São Mateus ou https://www.olx.com.br/imoveis/..."
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 shadow-inner"
               />
             </div>

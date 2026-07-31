@@ -1,0 +1,66 @@
+name: Build Agente Desktop Windows (.exe)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'desktop-agent/**'
+      - '.github/workflows/build-desktop-agent.yml'
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Código Fonte
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'desktop-agent/package.json'
+
+      - name: Configurar Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            desktop-agent/src-tauri/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('desktop-agent/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Instalar Dependências do Frontend
+        run: |
+          cd desktop-agent
+          npm ci || npm install
+
+      - name: Compilar Executável Windows (.exe)
+        run: |
+          cd desktop-agent
+          npx tauri build
+
+      - name: Renomear e Organizar Artefato Windows
+        shell: bash
+        run: |
+          mkdir -p output-exe
+          find desktop-agent/src-tauri/target/release/bundle/ -type f \( -name "*.exe" -o -name "*.msi" \) -exec cp {} output-exe/ \;
+
+      - name: Upload Artefato Executável Windows (.exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: IF-Prospeccao-Agent-Windows-exe
+          path: output-exe/*
+          retention-days: 30
