@@ -1,51 +1,32 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
-import { execFile } from "child_process";
-import path from "path";
-import fs from "fs";
+import { db } from "../db";
+import { prospeccaoBatches, prospeccaoLeads, ProspeccaoLead } from "@shared/schema";
+import { eq, and, ne, desc } from "drizzle-orm";
 
-export interface ScraperResult {
-  id: string;
+export interface SyncItem {
+  id?: string;
   titulo: string;
   link: string;
-  fonte: string;
-  trecho: string;
-  direto_proprietario: boolean;
-  cidade: string;
-  estado: string;
-  tipo: string;
-  modalidade: string;
+  fonte?: string;
+  trecho?: string;
+  direto_proprietario?: boolean;
 }
 
-interface BuscaParams {
+export interface SyncBatchRequest {
+  batchId?: string;
+  fonte?: string;
   estado: string;
   cidade: string;
   tipo: string;
   modalidade: string;
+  items: SyncItem[];
 }
 
-const DIRETO_KEYWORDS = [
-  "proprietário",
-  "proprietario",
-  "dono",
-  "direto",
-  "particular",
-  "sem corretor",
-  "sem imobiliária",
-  "sem imobiliaria",
-  "estou vendendo",
-  "estou alugando",
-  "vendo direto",
-  "alugo direto",
-  "direto com proprietário",
-  "direto com dono",
-  "venda particular",
-  "locação particular",
-];
-
-function classificarDireto(texto: string): boolean {
-  const lower = texto.toLowerCase();
-  return DIRETO_KEYWORDS.some((kw) => lower.includes(kw));
+export interface BuscaParams {
+  estado: string;
+  cidade: string;
+  tipo: string;
+  modalidade: string;
+  status?: string;
 }
 
 function gerarId(titulo: string, link: string): string {
@@ -59,141 +40,146 @@ function gerarId(titulo: string, link: string): string {
   return Math.abs(hash).toString(16);
 }
 
-function normalizarTexto(texto: string): string {
-  return texto
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-");
-}
-
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-];
-
-function getRandomUserAgent(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
 /**
- * Busca / Gerador para OLX Vendedor Particular
+ * Processa a sincronização de lote enviada pelo Agente Desktop ou Navegador.
+ * Classifica automaticamente em NOVOS, MANTIDOS e REMOVIDOS.
  */
-async function buscarOLXParticular(params: BuscaParams): Promise<ScraperResult[]> {
-  const { estado, cidade, tipo, modalidade } = params;
-  const results: ScraperResult[] = [];
+export async function sincronizarLoteProspeccao(payload: SyncBatchRequest) {
+  const {
+    batchId = `batch-${Date.now()}`,
+    fonte = "olx.com.br",
+    estado,
+    cidade,
+    tipo,
+    modalidade,
+    items = [],
+  } = payload;
 
-  const cleanState = estado.toLowerCase();
-  const cleanCity = normalizarTexto(cidade);
-  const cleanTipo = normalizarTexto(tipo);
-  const mode = modalidade.toLowerCase() === "aluguel" ? "aluguel" : "venda";
+  const cleanEstado = estado.trim().toUpperCase();
+  const cleanCidade = cidade.trim();
+  const cleanTipo = tipo.trim();
+  const cleanModalidade = modalidade.trim().toLowerCase();
 
-  const olxUrl = `https://www.olx.com.br/imoveis/${mode}/${cleanTipo}/estado-${cleanState}?f=p&q=${cleanCity}`;
+  let novosEncontrados = 0;
+  let mantidosEncontrados = 0;
 
-  try {
-    const response = await axios.get(olxUrl, {
-      headers: {
-        "User-Agent": getRandomUserAgent(),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9",
-      },
-      timeout: 7000,
-    });
+  const now = new Date();
 
-    const $ = cheerio.load(response.data);
+  // 1. Processa cada item enviado no lote
+  for (const item of items) {
+    const leadId = item.id || gerarId(item.titulo, item.link);
+    const existing = await db
+      .select()
+      .from(prospeccaoLeads)
+      .where(eq(prospeccaoLeads.id, leadId))
+      .limit(1);
 
-    $('[data-lurker-detail="list_id"]').each((_, el) => {
-      const title = $(el).find("h2").text().trim() || $(el).attr("title") || "";
-      const rawLink = $(el).find("a").attr("href") || "";
-      const price = $(el).find('[aria-label*="Preço"]').text().trim() || "";
-
-      if (title && rawLink) {
-        const link = rawLink.startsWith("http") ? rawLink : `https://www.olx.com.br${rawLink}`;
-        const snippet = `Imóvel particular anunciado na OLX em ${cidade}-${estado}.${price ? ` Preço: ${price}` : ""}`;
-
-        results.push({
-          id: gerarId(title, link),
-          titulo: title,
-          link,
-          fonte: "olx.com.br (Particular)",
-          trecho: snippet,
-          direto_proprietario: true,
-          cidade,
-          estado,
-          tipo,
-          modalidade,
-        });
-      }
-    });
-  } catch {
-    // ignore
-  }
-
-  if (results.length === 0) {
-    results.push({
-      id: `olx-particular-${cleanCity}`,
-      titulo: `OLX - Anúncios de Proprietários Particulares (${tipo} em ${cidade}-${estado})`,
-      link: olxUrl,
-      fonte: "olx.com.br (Particular)",
-      trecho: `Acessar anúncios filtrados exclusivamente para Vendedores Particulares (Sem Imobiliária) para ${tipo} para ${modalidade} em ${cidade}-${estado}.`,
-      direto_proprietario: true,
-      cidade,
-      estado,
-      tipo,
-      modalidade,
-    });
-  }
-
-  return results;
-}
-
-export async function executarScraperRust(params: BuscaParams): Promise<ScraperResult[]> {
-  const binaryPath = path.join(process.cwd(), "scraper/target/release/scraper");
-  if (!fs.existsSync(binaryPath)) {
-    throw new Error(`Scraper binary not found at ${binaryPath}`);
-  }
-
-  return new Promise((resolve, reject) => {
-    execFile(
-      binaryPath,
-      ["--cidade", params.cidade, "--estado", params.estado, "--tipo", params.tipo, "--modalidade", params.modalidade],
-      { timeout: 60000, maxBuffer: 10 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error("Erro executando scraper Rust:", stderr || error.message);
-          return reject(error);
-        }
-        try {
-          const results: ScraperResult[] = JSON.parse(stdout);
-          resolve(results);
-        } catch (parseErr) {
-          console.error("Erro ao interpretar JSON do scraper Rust:", parseErr);
-          reject(parseErr);
-        }
-      }
-    );
-  });
-}
-
-/**
- * Função Principal de Prospecção que executa exclusivamente a busca na OLX
- */
-export async function buscarImoveisProspeccao(params: BuscaParams): Promise<ScraperResult[]> {
-  // 1. Tenta executar o scraper Rust nativo (thirtyfour) se não estiver em ambiente de testes unitários
-  if (!process.env.VITEST && process.env.NODE_ENV !== "test") {
-    try {
-      const rustResults = await executarScraperRust(params);
-      if (rustResults && rustResults.length > 0) {
-        return rustResults;
-      }
-    } catch (err) {
-      console.log("Scraper Rust indisponível, executando fallback OLX HTTP:", (err as Error).message);
+    if (existing.length > 0) {
+      // Já existia no banco: marca mantido, atualiza horários e batch
+      await db
+        .update(prospeccaoLeads)
+        .set({
+          lastSeenAt: now,
+          lastBatchId: batchId,
+          status: "active",
+          isNew: false, // Não é mais novo pois foi reconfirmado
+        })
+        .where(eq(prospeccaoLeads.id, leadId));
+      mantidosEncontrados++;
+    } else {
+      // Item novo no banco: marca como NOVO
+      await db.insert(prospeccaoLeads).values({
+        id: leadId,
+        titulo: item.titulo,
+        link: item.link,
+        fonte: item.fonte || `${fonte} (Particular)`,
+        trecho: item.trecho || `Imóvel particular em ${cleanCidade}-${cleanEstado}.`,
+        diretoProprietario: item.direto_proprietario ?? true,
+        cidade: cleanCidade,
+        estado: cleanEstado,
+        tipo: cleanTipo,
+        modalidade: cleanModalidade,
+        status: "active",
+        isNew: true,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        lastBatchId: batchId,
+      });
+      novosEncontrados++;
     }
   }
 
-  // 2. Executa busca direta OLX
-  return await buscarOLXParticular(params);
+  // 2. Identifica imóveis que pertencem a este filtro mas NÃO vieram no lote atual (Removidos da plataforma)
+  const ativosAnteriores = await db
+    .select()
+    .from(prospeccaoLeads)
+    .where(
+      and(
+        eq(prospeccaoLeads.estado, cleanEstado),
+        eq(prospeccaoLeads.cidade, cleanCidade),
+        eq(prospeccaoLeads.tipo, cleanTipo),
+        eq(prospeccaoLeads.modalidade, cleanModalidade),
+        ne(prospeccaoLeads.lastBatchId, batchId)
+      )
+    );
+
+  let removidosEncontrados = 0;
+  for (const leadRemovido of ativosAnteriores) {
+    if (leadRemovido.status === "active") {
+      await db
+        .update(prospeccaoLeads)
+        .set({ status: "removed" })
+        .where(eq(prospeccaoLeads.id, leadRemovido.id));
+      removidosEncontrados++;
+    }
+  }
+
+  // 3. Registra o histórico do lote em prospeccaoBatches
+  const [batchRecord] = await db
+    .insert(prospeccaoBatches)
+    .values({
+      batchId,
+      fonte,
+      estado: cleanEstado,
+      cidade: cleanCidade,
+      tipo: cleanTipo,
+      modalidade: cleanModalidade,
+      totalEncontrados: items.length,
+      novosEncontrados,
+      removidosEncontrados,
+      createdAt: now,
+    })
+    .returning();
+
+  return {
+    batchRecord,
+    totalEncontrados: items.length,
+    novosEncontrados,
+    mantidosEncontrados,
+    removidosEncontrados,
+  };
+}
+
+/**
+ * Lista os leads de prospecção salvos e sincronizados no PostgreSQL.
+ */
+export async function listarLeadsProspeccao(params: BuscaParams): Promise<ProspeccaoLead[]> {
+  const { estado, cidade, tipo, modalidade, status } = params;
+
+  const conditions = [
+    eq(prospeccaoLeads.estado, estado.trim().toUpperCase()),
+    eq(prospeccaoLeads.cidade, cidade.trim()),
+    eq(prospeccaoLeads.tipo, tipo.trim()),
+    eq(prospeccaoLeads.modalidade, modalidade.trim().toLowerCase()),
+  ];
+
+  if (status) {
+    conditions.push(eq(prospeccaoLeads.status, status));
+  }
+
+  return await db
+    .select()
+    .from(prospeccaoLeads)
+    .where(and(...conditions))
+    .orderBy(desc(prospeccaoLeads.isNew), desc(prospeccaoLeads.lastSeenAt));
 }

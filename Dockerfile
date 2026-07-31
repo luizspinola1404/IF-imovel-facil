@@ -1,11 +1,3 @@
-# Build scraper stage
-FROM rust:alpine AS scraper-builder
-WORKDIR /app
-RUN apk add --no-cache musl-dev
-COPY scraper ./scraper
-WORKDIR /app/scraper
-RUN cargo build --release
-
 # Build stage
 FROM node:20-alpine AS builder
 
@@ -31,9 +23,6 @@ RUN node -e "require('fs').writeFileSync('dist/public/build_time.txt', new Date(
 # Production stage
 FROM node:20-alpine
 
-# Install runtime dependencies for the scraper
-RUN apk add --no-cache firefox geckodriver dbus libc6-compat gcompat
-
 WORKDIR /app
 
 # Copy package files
@@ -46,9 +35,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=builder /app/shared ./shared
-
-# Copy the compiled scraper binary
-COPY --from=scraper-builder /app/scraper/target/release/scraper ./scraper/target/release/scraper
 
 # Expose port
 EXPOSE 5000

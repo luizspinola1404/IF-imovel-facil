@@ -28,6 +28,8 @@ import {
   Filter,
   CheckCircle,
   Globe,
+  Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 
 const TIPOS = ["Casa", "Apartamento", "Terreno", "Comercial"];
@@ -42,11 +44,13 @@ interface ScraperResult {
   link: string;
   fonte: string;
   trecho: string;
-  direto_proprietario: boolean;
+  direto_proprietario?: boolean;
   cidade: string;
   estado: string;
   tipo: string;
   modalidade: string;
+  isNew?: boolean;
+  status?: string; // 'active', 'removed', 'saved'
 }
 
 function normalizarTexto(texto: string): string {
@@ -162,6 +166,12 @@ export function ProspeccaoDirect() {
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [leadsSalvosIds, setLeadsSalvosIds] = useState<Set<string>>(new Set());
   const [filtroTexto, setFiltroTexto] = useState("");
+
+  const [statsLote, setStatsLote] = useState<{
+    novos: number;
+    removidos: number;
+    total: number;
+  } | null>(null);
 
   // Dynamic cities states
   const [cidades, setCidades] = useState<{ id: number; nome: string }[]>([]);
@@ -303,48 +313,65 @@ export function ProspeccaoDirect() {
     setBuscando(true);
     setResultados([]);
     setFiltroTexto("");
+    setStatsLote(null);
+
+    let clientItems: ScraperResult[] = [];
 
     // 1. Tenta a raspagem no cliente (navegador residencial do usuário)
     try {
-      const clientResults = await rasparOLXNoNavegador({ estado, cidade, tipo, modalidade });
-      if (clientResults && clientResults.length > 0) {
-        setResultados(clientResults);
-        toast({
-          title: "Busca concluída no navegador!",
-          description: `${clientResults.length} imóveis de proprietários particulares extraídos em ${cidade}-${estado}.`,
-        });
-        setBuscando(false);
-        return;
-      }
+      clientItems = await rasparOLXNoNavegador({ estado, cidade, tipo, modalidade });
     } catch (clientErr) {
-      console.log("Raspagem client-side falhou, redirecionando para servidor:", clientErr);
+      console.log("Raspagem client-side falhou:", clientErr);
     }
 
-    // 2. Fallback via Servidor
+    // 2. Sincroniza o lote com o servidor PostgreSQL para calcular NOVOS e REMOVIDOS
     try {
-      const res = await fetch("/api/prospeccao/buscar", {
+      const syncRes = await fetch("/api/prospeccao/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado, cidade, tipo, modalidade }),
+        body: JSON.stringify({
+          batchId: `batch-${Date.now()}`,
+          fonte: "olx.com.br",
+          estado,
+          cidade,
+          tipo,
+          modalidade,
+          items: clientItems,
+        }),
       });
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || "Erro na busca");
+      if (!syncRes.ok) {
+        throw new Error("Erro ao sincronizar lote de prospecção");
       }
 
-      const data: ScraperResult[] = await res.json();
-      setResultados(data);
-
-      toast({
-        title: "Busca concluída!",
-        description: `${data.length} anúncios de proprietários diretos encontrados em ${cidade}-${estado}.`,
+      const syncData = await syncRes.json();
+      setStatsLote({
+        novos: syncData.novosEncontrados || 0,
+        removidos: syncData.removidosEncontrados || 0,
+        total: syncData.totalEncontrados || 0,
       });
+
+      // 3. Busca a lista completa sincronizada do banco de dados
+      const leadsRes = await fetch(
+        `/api/prospeccao/leads?estado=${encodeURIComponent(estado)}&cidade=${encodeURIComponent(
+          cidade
+        )}&tipo=${encodeURIComponent(tipo)}&modalidade=${encodeURIComponent(modalidade)}`
+      );
+
+      if (leadsRes.ok) {
+        const leadsData: ScraperResult[] = await leadsRes.json();
+        setResultados(leadsData);
+
+        toast({
+          title: "Sincronização concluída!",
+          description: `${syncData.novosEncontrados || 0} novos imóveis, ${syncData.removidosEncontrados || 0} removidos da OLX.`,
+        });
+      }
     } catch (err: any) {
       console.error(err);
       toast({
-        title: "Erro na busca",
-        description: err.message || "Não foi possível realizar a busca de prospecção.",
+        title: "Erro na sincronização",
+        description: err.message || "Não foi possível conectar com o banco de dados.",
         variant: "destructive",
       });
     } finally {
@@ -417,7 +444,7 @@ export function ProspeccaoDirect() {
       <div>
         <h2 className="text-xl font-bold">Prospecção de Imóveis (Direct proprietário)</h2>
         <p className="text-sm text-muted-foreground">
-          Pesquisa por anúncios em portais imobiliários e na web para encontrar listagens de proprietários particulares em tempo real.
+          Sincronização inteligente de anúncios de proprietários particulares em tempo real com histórico de lançamentos e exclusões.
         </p>
       </div>
 
@@ -503,12 +530,12 @@ export function ProspeccaoDirect() {
             {buscando ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Buscando em tempo real...
+                Sincronizando lote...
               </>
             ) : (
               <>
                 <SearchIcon className="h-4 w-4" />
-                Buscar Proprietários Diretos
+                Buscar & Sincronizar Lote
               </>
             )}
           </Button>
@@ -569,8 +596,8 @@ export function ProspeccaoDirect() {
       {buscando && (
         <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground border rounded-lg bg-white">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm font-medium">Consultando portais imobiliários e listagens de proprietários particulares...</p>
-          <p className="text-xs">Isso leva apenas de 1 a 3 segundos.</p>
+          <p className="text-sm font-medium">Processando lote de prospecção e sincronizando com o banco de dados...</p>
+          <p className="text-xs">Identificando novos imóveis e marcando anúncios desativados.</p>
         </div>
       )}
 
@@ -585,16 +612,25 @@ export function ProspeccaoDirect() {
                       OLX Brasil
                     </Badge>
                     <h3 className="text-base font-bold text-slate-800">
-                      Anúncios de Imóveis Encontrados
+                      Imóveis Sincronizados no Banco
                     </h3>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="text-xs px-2.5 py-1 font-semibold bg-slate-100 text-slate-700">
-                      {resultadosFiltrados.length} {resultadosFiltrados.length === 1 ? 'link' : 'links'} capturados
+                      {resultadosFiltrados.length} {resultadosFiltrados.length === 1 ? 'imóvel' : 'imóveis'}
                     </Badge>
-                    <Badge className="bg-green-100 text-green-800 border-green-300 text-xs px-2.5 py-1">
-                      {resultados.filter((r) => r.direto_proprietario).length} proprietários diretos
-                    </Badge>
+                    {statsLote && (
+                      <>
+                        <Badge className="bg-emerald-600 text-white border-0 text-xs px-2.5 py-1 flex items-center gap-1">
+                          <Sparkles className="h-3 w-3" />
+                          {statsLote.novos} novos
+                        </Badge>
+                        <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50 text-xs px-2.5 py-1 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          {statsLote.removidos} removidos
+                        </Badge>
+                      </>
+                    )}
                   </div>
                 </div>
               </AccordionTrigger>
@@ -602,7 +638,7 @@ export function ProspeccaoDirect() {
               <AccordionContent className="pt-2 pb-6 space-y-4">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-slate-50 p-3 rounded-lg border">
                   <div className="text-xs font-medium text-slate-600">
-                    Exibindo todos os links extraídos para <strong className="capitalize">{cidade || 'Região'} - {estado}</strong> ({tipo || 'Imóveis'}, {modalidade})
+                    Exibindo imóveis para <strong className="capitalize">{cidade || 'Região'} - {estado}</strong> ({tipo || 'Imóveis'}, {modalidade})
                   </div>
 
                   <div className="relative w-full sm:w-64">
@@ -624,6 +660,23 @@ export function ProspeccaoDirect() {
                           <span className="text-xs font-bold text-slate-400 font-mono w-6">
                             #{idx + 1}
                           </span>
+
+                          {resultado.isNew && (
+                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 text-[10px] px-2 py-0.5 animate-pulse">
+                              ⭐ NOVO
+                            </Badge>
+                          )}
+
+                          {resultado.status === "removed" ? (
+                            <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
+                              ❌ REMOVIDO DA OLX
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
+                              ATIVO
+                            </Badge>
+                          )}
+
                           <h4 className="font-semibold text-sm text-slate-800 truncate">
                             {resultado.titulo}
                           </h4>
@@ -679,9 +732,9 @@ export function ProspeccaoDirect() {
       {!buscando && resultados.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground border rounded-lg bg-white">
           <Building className="h-12 w-12 opacity-20" />
-          <p className="text-sm font-medium">Nenhuma busca ativa</p>
+          <p className="text-sm font-medium">Nenhum lote sincronizado para este filtro</p>
           <p className="text-xs text-center max-w-xs">
-            Selecione a localização e o tipo de imóvel nos filtros acima e execute a busca para rastrear leads particulares.
+            Execute a busca ou envie um lote pelo Agente Desktop para visualizar os imóveis novos e rastreados nesta região.
           </p>
         </div>
       )}

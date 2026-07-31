@@ -79,12 +79,46 @@ export const crawlerLeads = pgTable("crawler_leads", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const prospeccaoBatches = pgTable("prospeccao_batches", {
+  id: serial("id").primaryKey(),
+  batchId: text("batch_id").notNull(),
+  fonte: text("fonte").notNull().default("olx.com.br"),
+  estado: text("estado").notNull(),
+  cidade: text("cidade").notNull(),
+  tipo: text("tipo").notNull(),
+  modalidade: text("modalidade").notNull(),
+  totalEncontrados: integer("total_encontrados").notNull().default(0),
+  novosEncontrados: integer("novos_encontrados").notNull().default(0),
+  removidosEncontrados: integer("removidos_encontrados").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const prospeccaoLeads = pgTable("prospeccao_leads", {
+  id: text("id").primaryKey(),
+  titulo: text("titulo").notNull(),
+  link: text("link").notNull(),
+  fonte: text("fonte").notNull().default("olx.com.br (Particular)"),
+  trecho: text("trecho"),
+  diretoProprietario: boolean("direto_proprietario").notNull().default(true),
+  cidade: text("cidade").notNull(),
+  estado: text("estado").notNull(),
+  tipo: text("tipo").notNull(),
+  modalidade: text("modalidade").notNull(),
+  status: text("status").notNull().default("active"), // 'active', 'removed', 'saved'
+  isNew: boolean("is_new").notNull().default(true),
+  firstSeenAt: timestamp("first_seen_at").defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  lastBatchId: text("last_batch_id"),
+});
+
 export const insertPropertySchema = createInsertSchema(properties).omit({ id: true, createdAt: true });
 export const insertAdvantageSchema = createInsertSchema(advantages).omit({ id: true, createdAt: true });
 export const insertPropertyAdvantageSchema = createInsertSchema(propertyAdvantages).omit({ id: true, createdAt: true });
 export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
 export const insertCrawlerJobSchema = createInsertSchema(crawlerJobs).omit({ id: true, createdAt: true });
 export const insertCrawlerLeadSchema = createInsertSchema(crawlerLeads).omit({ id: true, createdAt: true });
+export const insertProspeccaoBatchSchema = createInsertSchema(prospeccaoBatches).omit({ id: true, createdAt: true });
+export const insertProspeccaoLeadSchema = createInsertSchema(prospeccaoLeads);
 
 export type Property = typeof properties.$inferSelect;
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
@@ -100,6 +134,10 @@ export type InsertCrawlerJob = z.infer<typeof insertCrawlerJobSchema>;
 export type CrawlerLead = typeof crawlerLeads.$inferSelect;
 export type InsertCrawlerLead = z.infer<typeof insertCrawlerLeadSchema>;
 
+export type ProspeccaoBatch = typeof prospeccaoBatches.$inferSelect;
+export type InsertProspeccaoBatch = z.infer<typeof insertProspeccaoBatchSchema>;
+export type ProspeccaoLead = typeof prospeccaoLeads.$inferSelect;
+export type InsertProspeccaoLead = z.infer<typeof insertProspeccaoLeadSchema>;
+
 export type CreatePropertyRequest = InsertProperty;
 export type UpdatePropertyRequest = Partial<InsertProperty>;
-

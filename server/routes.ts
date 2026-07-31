@@ -299,16 +299,57 @@ export async function registerRoutes(
     }
   });
 
-  // Prospecção Web Nativa (TypeScript)
-  app.post("/api/prospeccao/buscar", isAuthenticated, async (req, res) => {
-    const { estado, cidade, tipo, modalidade } = req.body || {};
+  // Prospecção Sincronização Inteligente & Agente Desktop
+  app.post("/api/prospeccao/sync", async (req, res) => {
+    const { estado, cidade, tipo, modalidade, items } = req.body || {};
     if (!estado || !cidade || !tipo || !modalidade) {
       return res.status(400).json({ error: "Campos obrigatórios: estado, cidade, tipo, modalidade" });
     }
 
     try {
-      const results = await buscarImoveisProspeccao({ estado, cidade, tipo, modalidade });
-      res.json(results);
+      const result = await sincronizarLoteProspeccao({
+        batchId: req.body.batchId,
+        fonte: req.body.fonte || "olx.com.br",
+        estado,
+        cidade,
+        tipo,
+        modalidade,
+        items: Array.isArray(items) ? items : [],
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("Erro na sincronização de lote de prospecção:", err);
+      res.status(500).json({ error: "Falha ao sincronizar lote de prospecção" });
+    }
+  });
+
+  app.get("/api/prospeccao/leads", isAuthenticated, async (req, res) => {
+    const { estado, cidade, tipo, modalidade, status } = req.query as any;
+    if (!estado || !cidade || !tipo || !modalidade) {
+      return res.status(400).json({ error: "Parâmetros obrigatórios: estado, cidade, tipo, modalidade" });
+    }
+
+    try {
+      const leads = await listarLeadsProspeccao({ estado, cidade, tipo, modalidade, status });
+      res.json(leads);
+    } catch (err) {
+      console.error("Erro ao listar leads de prospecção:", err);
+      res.status(500).json({ error: "Erro ao buscar leads de prospecção" });
+    }
+  });
+
+  app.post("/api/prospeccao/buscar", isAuthenticated, async (req, res) => {
+    const { estado, cidade, tipo, modalidade, items } = req.body || {};
+    if (!estado || !cidade || !tipo || !modalidade) {
+      return res.status(400).json({ error: "Campos obrigatórios: estado, cidade, tipo, modalidade" });
+    }
+
+    try {
+      if (Array.isArray(items) && items.length > 0) {
+        await sincronizarLoteProspeccao({ estado, cidade, tipo, modalidade, items });
+      }
+      const leads = await listarLeadsProspeccao({ estado, cidade, tipo, modalidade });
+      res.json(leads);
     } catch (err) {
       console.error("Erro na busca de prospecção:", err);
       res.status(500).json({ error: "Erro ao interpretar resultados da busca" });
