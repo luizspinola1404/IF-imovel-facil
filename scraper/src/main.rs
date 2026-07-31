@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
+use regex::Regex;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SearchResult {
@@ -18,52 +19,39 @@ struct SearchResult {
     modalidade: String,
 }
 
-const DIRETO_KEYWORDS: &[&str] = &[
-    "proprietário",
-    "proprietario",
-    "dono",
-    "direto",
-    "particular",
-    "sem corretor",
-    "sem imobiliária",
-    "sem imobiliaria",
-    "estou vendendo",
-    "estou vendendo meu",
-    "estou alugando",
-    "estou alugando meu",
-    "vendo direto",
-    "alugo direto",
-    "vendo proprietário",
-    "alugo proprietário",
-    "direto com proprietário",
-    "direto com dono",
-    "venda particular",
-    "locação particular",
-    "anúncio particular",
-    "tratar direto",
-    "contato direto",
-    "imóvel direto",
-    "direto com o dono",
-    "direto do proprietário",
-    "vendo urgente",
-    "alugo urgente",
-    "particular vende",
-    "particular aluga",
-];
-
-fn classificar_direto(texto: &str) -> bool {
-    let lower = texto.to_lowercase();
-    DIRETO_KEYWORDS.iter().any(|&kw| lower.contains(kw))
+fn mapear_tipo_imovel(tipo: &str) -> String {
+    let lower = tipo.to_lowercase();
+    match lower.as_str() {
+        "casa" | "casas" => "casas".to_string(),
+        "apartamento" | "apartamentos" | "ap" => "apartamentos".to_string(),
+        "terreno" | "terrenos" | "lote" | "lotes" => "terrenos-e-lotes".to_string(),
+        "comercial" | "sala" | "galpão" | "galpao" => "comercio-e-industria".to_string(),
+        "imoveis" | "todos" => "imoveis".to_string(),
+        _ => lower,
+    }
 }
 
-fn extrair_fonte(url_str: &str) -> String {
-    let clean = url_str.replace("https://", "").replace("http://", "");
-    let parts: Vec<&str> = clean.split('/').collect();
-    if !parts.is_empty() {
-        parts[0].replace("www.", "")
+fn construir_url_olx(estado: &str, tipo: &str, modalidade: &str) -> String {
+    let st = estado.to_lowercase().replace("estado-", "");
+    let uf_param = if st != "br" && st != "todos" && !st.is_empty() {
+        format!("estado-{}", st)
     } else {
-        "Web".to_string()
+        String::new()
+    };
+
+    let tipo_slug = mapear_tipo_imovel(tipo);
+    let mod_slug = modalidade.to_lowercase();
+
+    let mut parts = vec!["https://www.olx.com.br/imoveis", &mod_slug];
+    if !tipo_slug.is_empty() && tipo_slug != "imoveis" {
+        parts.push(&tipo_slug);
     }
+    if !uf_param.is_empty() {
+        parts.push(&uf_param);
+    }
+
+    let url_base = parts.join("/");
+    format!("{}?f=p", url_base)
 }
 
 fn gerar_id(titulo: &str, link: &str) -> String {
@@ -74,18 +62,6 @@ fn gerar_id(titulo: &str, link: &str) -> String {
         hash = (hash.wrapping_shl(5)).wrapping_sub(hash).wrapping_add(char_code);
     }
     format!("{:x}", hash.abs())
-}
-
-fn extrair_url_real(link: &str) -> String {
-    if let Some(pos) = link.find("uddg=") {
-        let start = pos + 5;
-        let end = link[start..].find('&').map(|idx| start + idx).unwrap_or(link.len());
-        let encoded = &link[start..end];
-        if let Ok(decoded) = urlencoding::decode(encoded) {
-            return decoded.into_owned();
-        }
-    }
-    link.to_string()
 }
 
 #[tokio::main]
@@ -128,12 +104,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    if cidade.is_empty() || estado.is_empty() || tipo.is_empty() || modalidade.is_empty() {
+    if estado.is_empty() || tipo.is_empty() || modalidade.is_empty() {
         eprintln!("Erro: argumentos faltando. Uso: scraper --cidade <cidade> --estado <estado> --tipo <tipo> --modalidade <modalidade>");
         std::process::exit(1);
     }
 
-    // 2. Start Geckodriver in the background on a dynamic port based on PID to prevent conflicts
+    // 2. Inicia o Geckodriver em segundo plano em uma porta dinâmica
     let pid = std::process::id();
     let port_num = 4500 + (pid % 1000);
     let port = port_num.to_string();
@@ -145,10 +121,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .spawn()
         .expect("Falha ao iniciar o Geckodriver");
 
-    // Wait a brief moment for geckodriver to boot up
     thread::sleep(Duration::from_millis(1500));
 
-    // 3. Setup thirtyfour Webdriver capabilities
+    // 3. Configura o WebDriver do thirtyfour
     let mut caps = DesiredCapabilities::firefox();
     caps.add_arg("--headless")?;
 
@@ -162,7 +137,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 4. Setup signal listener for SIGTERM / SIGINT
+    // 4. Configura listener de sinais SIGTERM / SIGINT
     let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(async move {
         #[cfg(unix)]
@@ -187,53 +162,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = tx.send(());
     });
 
-    // 5. Run scraping within a select block to handle termination signals gracefully
+    // 5. Executa a raspagem nativa na OLX
     let res = tokio::select! {
         r = async {
-            let query_term = format!(
-                "\"{}\" \"{}\" \"{}\" \"{}\" (\"direto com proprietario\" OR \"direto proprietario\" OR \"particular\" OR \"sem corretor\")",
-                tipo, modalidade, cidade, estado
-            );
-            let search_url = format!(
-                "https://html.duckduckgo.com/html/?q={}&kl=br-pt",
-                urlencoding::encode(&query_term)
-            );
-
+            let target_url = construir_url_olx(&estado, &tipo, &modalidade);
             let mut results: Vec<SearchResult> = Vec::new();
+            let mut seen_links = std::collections::HashSet::new();
 
-            match driver.goto(&search_url).await {
-                Ok(_) => {
-                    tokio::time::sleep(Duration::from_millis(1500)).await;
+            if driver.goto(&target_url).await.is_ok() {
+                tokio::time::sleep(Duration::from_millis(2500)).await;
 
-                    match driver.find_all(By::Css(".result")).await {
-                        Ok(elements) => {
-                            for el in elements {
-                                if let Ok(title_el) = el.find(By::Css(".result__a")).await {
-                                    if let (Ok(title), Ok(Some(link))) = (title_el.text().await, title_el.attr("href").await) {
-                                        let mut real_link = extrair_url_real(&link);
-                                        if real_link.starts_with("//") {
-                                            real_link = format!("https:{}", real_link);
-                                        }
-                                        if real_link.contains("duckduckgo.com/") || real_link.starts_with('/') {
-                                            continue;
-                                        }
+                let page_html = driver.source().await.unwrap_or_default();
+                let re_total = Regex::new(r"(?i)de\s+(\d+)\s+resultados")?;
+                
+                let total_items = if let Some(cap) = re_total.captures(&page_html) {
+                    cap.get(1).and_then(|m| m.as_str().parse::<usize>().ok()).unwrap_or(0)
+                } else {
+                    0
+                };
 
-                                        let snippet = match el.find(By::Css(".result__snippet")).await {
-                                            Ok(snippet_el) => snippet_el.text().await.unwrap_or_default(),
-                                            Err(_) => String::new(),
+                let total_pages = if total_items > 0 {
+                    (total_items + 49) / 50
+                } else {
+                    1
+                };
+
+                let re_ad_id = Regex::new(r"-\d+$")?;
+
+                for page in 1..=total_pages {
+                    if page > 1 {
+                        let sep = if target_url.contains('?') { "&" } else { "?" };
+                        let page_url = format!("{}{:?}o={}", target_url, sep, page).replace('"', "");
+                        if driver.goto(&page_url).await.is_err() {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(2500)).await;
+                    }
+
+                    if let Ok(anchors) = driver.find_all(By::Tag("a")).await {
+                        for a in anchors {
+                            if let Ok(Some(href)) = a.attr("href").await {
+                                if href.contains("olx.com.br") && href.contains("/imoveis/") && re_ad_id.is_match(&href) {
+                                    if !seen_links.contains(&href) {
+                                        seen_links.insert(href.clone());
+                                        let title = a.text().await.unwrap_or_default();
+                                        let clean_title = if title.trim().is_empty() {
+                                            "Imóvel Direto com Proprietário".to_string()
+                                        } else {
+                                            title.trim().to_string()
                                         };
 
-                                        let is_direct = classificar_direto(&title) || classificar_direto(&snippet);
-                                        let source = extrair_fonte(&real_link);
-                                        let id = gerar_id(&title, &real_link);
+                                        let id = gerar_id(&clean_title, &href);
+                                        let trecho = format!("Imóvel anunciado na OLX em {}-{}. Anúncio direto de particular.", cidade, estado);
 
                                         results.push(SearchResult {
                                             id,
-                                            titulo: title,
-                                            link: real_link,
-                                            fonte: source,
-                                            trecho: snippet,
-                                            direto_proprietario: is_direct,
+                                            titulo: clean_title,
+                                            link: href,
+                                            fonte: "olx.com.br (Particular)".to_string(),
+                                            trecho,
+                                            direto_proprietario: true,
                                             cidade: cidade.clone(),
                                             estado: estado.clone(),
                                             tipo: tipo.clone(),
@@ -243,15 +231,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         }
-                        Err(e) => {
-                            eprintln!("Erro ao buscar resultados: {}", e);
-                        }
                     }
                 }
-                Err(e) => {
-                    eprintln!("Erro ao navegar até o buscador: {}", e);
-                }
             }
+
             Ok::<Vec<SearchResult>, Box<dyn std::error::Error>>(results)
         } => r,
         _ = &mut rx => {

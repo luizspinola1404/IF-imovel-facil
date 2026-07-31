@@ -1,5 +1,8 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { execFile } from "child_process";
+import path from "path";
+import fs from "fs";
 
 export interface ScraperResult {
   id: string;
@@ -258,19 +261,63 @@ async function buscarOLXParticular(params: BuscaParams): Promise<ScraperResult[]
   return results;
 }
 
+import { execFile } from "child_process";
+import path from "path";
+import fs from "fs";
+
+export async function executarScraperRust(params: BuscaParams): Promise<ScraperResult[]> {
+  const binaryPath = path.join(process.cwd(), "scraper/target/release/scraper");
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(`Scraper binary not found at ${binaryPath}`);
+  }
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      binaryPath,
+      ["--cidade", params.cidade, "--estado", params.estado, "--tipo", params.tipo, "--modalidade", params.modalidade],
+      { timeout: 60000, maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error("Erro executando scraper Rust:", stderr || error.message);
+          return reject(error);
+        }
+        try {
+          const results: ScraperResult[] = JSON.parse(stdout);
+          resolve(results);
+        } catch (parseErr) {
+          console.error("Erro ao interpretar JSON do scraper Rust:", parseErr);
+          reject(parseErr);
+        }
+      }
+    );
+  });
+}
+
 /**
  * Função Principal de Prospecção que agrega múltiplas fontes
  */
 export async function buscarImoveisProspeccao(params: BuscaParams): Promise<ScraperResult[]> {
   const { estado, cidade, tipo, modalidade } = params;
 
-  // 1. Executa buscas em paralelo
+  // 1. Tenta executar o scraper Rust nativo (thirtyfour) se não estiver em ambiente de testes unitários
+  if (!process.env.VITEST && process.env.NODE_ENV !== "test") {
+    try {
+      const rustResults = await executarScraperRust(params);
+      if (rustResults && rustResults.length > 0) {
+        return rustResults;
+      }
+    } catch (err) {
+      console.log("Scraper Rust indisponível ou sem resultados, executando prospecção HTTP:", (err as Error).message);
+    }
+  }
+
+  // 2. Executa buscas em paralelo (Fallback HTTP)
   const [ddgResults, olxResults] = await Promise.all([
     buscarDuckDuckGo(params),
     buscarOLXParticular(params),
   ]);
 
-  // 2. Link Proprietário Direto
+  // 3. Link Proprietário Direto
   const cleanCity = normalizarTexto(cidade);
   const cleanState = estado.toLowerCase();
   const cleanModalidade = modalidade.toLowerCase();
@@ -289,7 +336,7 @@ export async function buscarImoveisProspeccao(params: BuscaParams): Promise<Scra
     modalidade,
   };
 
-  // 3. Combina e desduplica resultados por link
+  // 4. Combina e desduplica resultados por link
   const allResults = [propDiretoCard, ...olxResults, ...ddgResults];
   const seenLinks = new Set<string>();
   const uniqueResults: ScraperResult[] = [];
@@ -302,7 +349,7 @@ export async function buscarImoveisProspeccao(params: BuscaParams): Promise<Scra
     }
   }
 
-  // 4. Ordena colocando proprietários diretos primeiro
+  // 5. Ordena colocando proprietários diretos primeiro
   uniqueResults.sort((a, b) => {
     if (a.direto_proprietario === b.direto_proprietario) return 0;
     return a.direto_proprietario ? -1 : 1;
