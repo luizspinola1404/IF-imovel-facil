@@ -31,6 +31,36 @@ fn mapear_tipo_imovel(tipo: &str) -> String {
     }
 }
 
+fn construir_url_olx(estado: &str, cidade: &str, tipo: &str, modalidade: &str) -> String {
+    let st = estado.to_lowercase().replace("estado-", "");
+    let uf_param = if st != "br" && st != "todos" && !st.is_empty() {
+        format!("estado-{}", st)
+    } else {
+        String::new()
+    };
+
+    let tipo_slug = mapear_tipo_imovel(tipo);
+    let mod_slug = if modalidade.to_lowercase() == "aluguel" { "aluguel" } else { "venda" };
+
+    let mut parts = vec!["https://www.olx.com.br/imoveis", mod_slug];
+    if !tipo_slug.is_empty() && tipo_slug != "imoveis" {
+        parts.push(&tipo_slug);
+    }
+    if !uf_param.is_empty() {
+        parts.push(&uf_param);
+    }
+
+    let url_base = parts.join("/");
+
+    let mut query_params = vec!["f=p".to_string()];
+    if !cidade.trim().is_empty() {
+        let clean_city = urlencoding::encode(cidade.trim());
+        query_params.push(format!("q={}", clean_city));
+    }
+
+    format!("{}?{}", url_base, query_params.join("&"))
+}
+
 fn preparar_url_com_particular(url: &str) -> String {
     if !url.contains("f=p") {
         let sep = if url.contains('?') { "&" } else { "?" };
@@ -48,70 +78,6 @@ fn gerar_id(titulo: &str, link: &str) -> String {
         hash = (hash.wrapping_shl(5)).wrapping_sub(hash).wrapping_add(char_code);
     }
     format!("{:x}", hash.abs())
-}
-
-async fn obter_url_regional_olx(
-    driver: &WebDriver,
-    estado: &str,
-    cidade: &str,
-    tipo: &str,
-    modalidade: &str
-) -> String {
-    let base = "https://www.olx.com.br/imoveis";
-    if driver.goto(base).await.is_err() {
-        return format!("https://www.olx.com.br/imoveis/{}/estado-{}?f=p", modalidade.to_lowercase(), estado.to_lowercase());
-    }
-    tokio::time::sleep(Duration::from_millis(2500)).await;
-
-    // 1. Seleciona a aba Alugar ou Comprar
-    let aba_alvo = if modalidade.to_lowercase() == "aluguel" { "Alugar" } else { "Comprar" };
-    if let Ok(tabs) = driver.find_all(By::Tag("button")).await {
-        for tab in tabs {
-            if let Ok(txt) = tab.text().await {
-                if txt.trim().eq_ignore_ascii_case(aba_alvo) {
-                    let _ = tab.click().await;
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
-                    break;
-                }
-            }
-        }
-    }
-
-    // 2. Digita no campo "Informe uma localização" (#location-1002)
-    if let Ok(loc_input) = driver.find(By::Id("location-1002")).await {
-        let query = format!("{} {}", cidade.trim(), estado.trim());
-        let _ = loc_input.clear().await;
-        let _ = loc_input.send_keys(&query).await;
-        tokio::time::sleep(Duration::from_millis(2000)).await;
-
-        let _ = loc_input.send_keys(Key::Down).await;
-        let _ = loc_input.send_keys(Key::Enter).await;
-        tokio::time::sleep(Duration::from_millis(1500)).await;
-    }
-
-    // 3. Clica no botão "Buscar"
-    if let Ok(buttons) = driver.find_all(By::Tag("button")).await {
-        for b in buttons {
-            if let Ok(txt) = b.text().await {
-                if txt.to_lowercase().contains("buscar") {
-                    let _ = b.click().await;
-                    tokio::time::sleep(Duration::from_millis(3500)).await;
-                    break;
-                }
-            }
-        }
-    }
-
-    let redirected_url = driver.current_url().await.map(|u| u.to_string()).unwrap_or_default();
-    if redirected_url.is_empty() || redirected_url == base {
-        // Fallback para URL construída
-        let st = estado.to_lowercase().replace("estado-", "");
-        let t_slug = mapear_tipo_imovel(tipo);
-        let m_slug = modalidade.to_lowercase();
-        format!("https://www.olx.com.br/imoveis/{}/{}/estado-{}?f=p", m_slug, t_slug, st)
-    } else {
-        preparar_url_com_particular(&redirected_url)
-    }
 }
 
 #[tokio::main]
@@ -161,6 +127,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let target_url = if !custom_url.is_empty() {
+        preparar_url_com_particular(&custom_url)
+    } else if !estado.is_empty() && !tipo.is_empty() && !modalidade.is_empty() {
+        construir_url_olx(&estado, &cidade, &tipo, &modalidade)
+    } else {
+        eprintln!("Erro: Forneça --url <url> ou --cidade <cidade> --estado <estado> --tipo <tipo> --modalidade <modalidade>");
+        std::process::exit(1);
+    };
+
     // 2. Inicia o Geckodriver em segundo plano em uma porta dinâmica
     let pid = std::process::id();
     let port_num = 4500 + (pid % 1000);
@@ -190,24 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 4. Determina a URL Alvo executando a navegação de localização se necessário
-    let target_url = if !custom_url.is_empty() {
-        preparar_url_com_particular(&custom_url)
-    } else if !cidade.is_empty() && !estado.is_empty() {
-        obter_url_regional_olx(&driver, &estado, &cidade, &tipo, &modalidade).await
-    } else if !estado.is_empty() && !tipo.is_empty() && !modalidade.is_empty() {
-        let st = estado.to_lowercase().replace("estado-", "");
-        let t_slug = mapear_tipo_imovel(&tipo);
-        let m_slug = modalidade.to_lowercase();
-        format!("https://www.olx.com.br/imoveis/{}/{}/estado-{}?f=p", m_slug, t_slug, st)
-    } else {
-        eprintln!("Erro: Forneça --url <url> ou --cidade <cidade> --estado <estado> --tipo <tipo> --modalidade <modalidade>");
-        let _ = driver.quit().await;
-        let _ = geckodriver.kill();
-        std::process::exit(1);
-    };
-
-    // 5. Configura listener de sinais SIGTERM / SIGINT
+    // 4. Configura listener de sinais SIGTERM / SIGINT
     let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(async move {
         #[cfg(unix)]
@@ -232,7 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = tx.send(());
     });
 
-    // 6. Executa a raspagem nativa da URL OLX com f=p e navegação paginada
+    // 5. Executa a raspagem nativa na OLX com filtro f=p e paginação
     let res = tokio::select! {
         r = async {
             let mut results: Vec<SearchResult> = Vec::new();
@@ -312,7 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 7. Cleanup browser & geckodriver
+    // 6. Cleanup browser & geckodriver
     let _ = driver.quit().await;
     let _ = geckodriver.kill();
 
