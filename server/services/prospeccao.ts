@@ -22,10 +22,10 @@ export interface SyncBatchRequest {
 }
 
 export interface BuscaParams {
-  estado: string;
-  cidade: string;
-  tipo: string;
-  modalidade: string;
+  estado?: string;
+  cidade?: string;
+  tipo?: string;
+  modalidade?: string;
   status?: string;
 }
 
@@ -162,24 +162,39 @@ export async function sincronizarLoteProspeccao(payload: SyncBatchRequest) {
 
 /**
  * Lista os leads de prospecção salvos e sincronizados no PostgreSQL.
+ * Parâmetros opcionais: se nenhum for passado, exibe TODOS os imóveis prospectados.
  */
-export async function listarLeadsProspeccao(params: BuscaParams): Promise<ProspeccaoLead[]> {
-  const { estado, cidade, tipo, modalidade, status } = params;
+export async function listarLeadsProspeccao(params?: Partial<BuscaParams>): Promise<ProspeccaoLead[]> {
+  const { estado, cidade, tipo, modalidade, status } = params || {};
 
-  const conditions = [
-    eq(prospeccaoLeads.estado, estado.trim().toUpperCase()),
-    eq(prospeccaoLeads.cidade, cidade.trim()),
-    eq(prospeccaoLeads.tipo, tipo.trim()),
-    eq(prospeccaoLeads.modalidade, modalidade.trim().toLowerCase()),
-  ];
+  const conditions = [];
 
-  if (status) {
-    conditions.push(eq(prospeccaoLeads.status, status));
+  if (estado && estado.trim()) {
+    conditions.push(eq(prospeccaoLeads.estado, estado.trim().toUpperCase()));
+  }
+  if (cidade && cidade.trim()) {
+    conditions.push(eq(prospeccaoLeads.cidade, cidade.trim()));
+  }
+  if (tipo && tipo.trim() && tipo.trim().toLowerCase() !== "todos") {
+    conditions.push(eq(prospeccaoLeads.tipo, tipo.trim()));
+  }
+  if (modalidade && modalidade.trim() && modalidade.trim().toLowerCase() !== "todos") {
+    conditions.push(eq(prospeccaoLeads.modalidade, modalidade.trim().toLowerCase()));
+  }
+  if (status && status.trim() && status.trim().toLowerCase() !== "todos") {
+    conditions.push(eq(prospeccaoLeads.status, status.trim()));
+  }
+
+  if (conditions.length > 0) {
+    return await db
+      .select()
+      .from(prospeccaoLeads)
+      .where(and(...conditions))
+      .orderBy(desc(prospeccaoLeads.isNew), desc(prospeccaoLeads.lastSeenAt));
   }
 
   return await db
     .select()
     .from(prospeccaoLeads)
-    .where(and(...conditions))
     .orderBy(desc(prospeccaoLeads.isNew), desc(prospeccaoLeads.lastSeenAt));
 }

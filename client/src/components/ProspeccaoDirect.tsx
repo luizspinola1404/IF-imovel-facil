@@ -21,6 +21,7 @@ import {
   Sparkles,
   AlertTriangle,
   RefreshCw,
+  Search,
 } from "lucide-react";
 
 const ESTADOS_BR = [
@@ -49,10 +50,10 @@ interface ScraperResult {
 
 export function ProspeccaoDirect() {
   const { toast } = useToast();
-  const [estado, setEstado] = useState("");
-  const [cidade, setCidade] = useState("");
+  const [estado, setEstado] = useState("todos");
+  const [cidade, setCidade] = useState("todas");
   const [tipo, setTipo] = useState("todos");
-  const [modalidade, setModalidade] = useState("venda");
+  const [modalidade, setModalidade] = useState("todas");
   const [statusFiltro, setStatusFiltro] = useState("todos");
 
   const [resultados, setResultados] = useState<ScraperResult[]>([]);
@@ -67,9 +68,9 @@ export function ProspeccaoDirect() {
 
   // Fetch cities when estado changes
   useEffect(() => {
-    if (!estado) {
+    if (!estado || estado === "todos") {
       setCidades([]);
-      setCidade("");
+      setCidade("todas");
       return;
     }
 
@@ -97,21 +98,17 @@ export function ProspeccaoDirect() {
   }, [estado]);
 
   const carregarLeadsSincronizados = async () => {
-    if (!estado || !cidade) {
-      return;
-    }
-
     setCarregando(true);
     try {
-      let url = `/api/prospeccao/leads?estado=${encodeURIComponent(estado)}&cidade=${encodeURIComponent(cidade)}&modalidade=${encodeURIComponent(modalidade)}`;
-      if (tipo && tipo !== "todos") {
-        url += `&tipo=${encodeURIComponent(tipo)}`;
-      }
-      if (statusFiltro && statusFiltro !== "todos") {
-        url += `&status=${encodeURIComponent(statusFiltro)}`;
-      }
+      let queryParams = [];
+      if (estado && estado !== "todos") queryParams.push(`estado=${encodeURIComponent(estado)}`);
+      if (cidade && cidade !== "todas") queryParams.push(`cidade=${encodeURIComponent(cidade)}`);
+      if (tipo && tipo !== "todos") queryParams.push(`tipo=${encodeURIComponent(tipo)}`);
+      if (modalidade && modalidade !== "todas") queryParams.push(`modalidade=${encodeURIComponent(modalidade)}`);
+      if (statusFiltro && statusFiltro !== "todos") queryParams.push(`status=${encodeURIComponent(statusFiltro)}`);
 
-      const res = await fetch(url);
+      const queryString = queryParams.length > 0 ? `?${queryParams.join("&")}` : "";
+      const res = await fetch(`/api/prospeccao/leads${queryString}`);
       if (!res.ok) {
         throw new Error("Erro ao carregar leads sincronizados");
       }
@@ -122,7 +119,7 @@ export function ProspeccaoDirect() {
       console.error(err);
       toast({
         title: "Erro ao carregar dados",
-        description: err.message || "Não foi possível carregar os leads sincronizados.",
+        description: err.message || "Não foi possível carregar os imóveis prospectados.",
         variant: "destructive",
       });
     } finally {
@@ -130,10 +127,9 @@ export function ProspeccaoDirect() {
     }
   };
 
+  // Executa o carregamento automático na montagem inicial e ao alterar filtros
   useEffect(() => {
-    if (estado && cidade) {
-      carregarLeadsSincronizados();
-    }
+    carregarLeadsSincronizados();
   }, [estado, cidade, tipo, modalidade, statusFiltro]);
 
   const handleSalvarLead = async (resultado: ScraperResult) => {
@@ -173,6 +169,8 @@ export function ProspeccaoDirect() {
     return (
       r.titulo.toLowerCase().includes(query) ||
       r.trecho.toLowerCase().includes(query) ||
+      r.cidade.toLowerCase().includes(query) ||
+      r.estado.toLowerCase().includes(query) ||
       r.fonte.toLowerCase().includes(query)
     );
   });
@@ -187,22 +185,20 @@ export function ProspeccaoDirect() {
         <div>
           <h2 className="text-xl font-bold">Imóveis Prospectados (Sincronização Desktop)</h2>
           <p className="text-sm text-muted-foreground">
-            Painel de controle dos imóveis de proprietários particulares capturados e atualizados via Agente Desktop.
+            Todos os imóveis de proprietários particulares capturados e atualizados via Agente Desktop.
           </p>
         </div>
 
-        {estado && cidade && (
-          <Button
-            onClick={carregarLeadsSincronizados}
-            disabled={carregando}
-            variant="outline"
-            size="sm"
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
-            Atualizar Painel
-          </Button>
-        )}
+        <Button
+          onClick={carregarLeadsSincronizados}
+          disabled={carregando}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
+          Atualizar Lista
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border">
@@ -210,9 +206,10 @@ export function ProspeccaoDirect() {
           <Label htmlFor="estado">Estado</Label>
           <Select value={estado} onValueChange={setEstado}>
             <SelectTrigger id="estado">
-              <SelectValue placeholder="UF" />
+              <SelectValue placeholder="Todos os Estados" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="todos">Todos os Estados</SelectItem>
               {ESTADOS_BR.map((uf) => (
                 <SelectItem key={uf} value={uf}>{uf}</SelectItem>
               ))}
@@ -230,9 +227,10 @@ export function ProspeccaoDirect() {
           ) : cidades.length > 0 ? (
             <Select value={cidade} onValueChange={setCidade}>
               <SelectTrigger id="cidade">
-                <SelectValue placeholder="Selecione a cidade" />
+                <SelectValue placeholder="Todas as Cidades" />
               </SelectTrigger>
               <SelectContent className="max-h-[300px] overflow-y-auto">
+                <SelectItem value="todas">Todas as Cidades</SelectItem>
                 {cidades.map((c) => (
                   <SelectItem key={c.id} value={c.nome}>
                     {c.nome}
@@ -243,10 +241,9 @@ export function ProspeccaoDirect() {
           ) : (
             <Input
               id="cidade"
-              placeholder="Digite a cidade"
-              value={cidade}
-              onChange={(e) => setCidade(e.target.value)}
-              disabled={!estado}
+              placeholder="Todas as cidades"
+              value={cidade === "todas" ? "" : cidade}
+              onChange={(e) => setCidade(e.target.value || "todas")}
             />
           )}
         </div>
@@ -270,9 +267,10 @@ export function ProspeccaoDirect() {
           <Label htmlFor="modalidade">Modalidade</Label>
           <Select value={modalidade} onValueChange={setModalidade}>
             <SelectTrigger id="modalidade">
-              <SelectValue placeholder="Venda / Aluguel" />
+              <SelectValue placeholder="Todas" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="todas">Todas as Modalidades</SelectItem>
               <SelectItem value="venda">Venda</SelectItem>
               <SelectItem value="aluguel">Aluguel</SelectItem>
             </SelectContent>
@@ -306,11 +304,11 @@ export function ProspeccaoDirect() {
           <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border shadow-sm">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-sm font-bold text-slate-800">
-                Resumo em {cidade}-{estado}:
+                Total Capturado: {resultados.length} imóveis
               </span>
               <Badge className="bg-emerald-600 text-white border-0 text-xs px-2.5 py-1 flex items-center gap-1">
                 <Sparkles className="h-3 w-3" />
-                {countNovos} novos lançamentos
+                {countNovos} novos
               </Badge>
               <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs px-2.5 py-1">
                 {countAtivos} ativos
@@ -318,7 +316,7 @@ export function ProspeccaoDirect() {
               {countRemovidos > 0 && (
                 <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50 text-xs px-2.5 py-1 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" />
-                  {countRemovidos} removidos/vendidos
+                  {countRemovidos} removidos
                 </Badge>
               )}
             </div>
@@ -326,7 +324,7 @@ export function ProspeccaoDirect() {
             <div className="relative w-full sm:w-64">
               <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Filtrar por palavra-chave..."
+                placeholder="Filtrar imóveis..."
                 value={filtroTexto}
                 onChange={(e) => setFiltroTexto(e.target.value)}
                 className="pl-8 h-8 text-xs bg-slate-50"
@@ -342,6 +340,10 @@ export function ProspeccaoDirect() {
                     <span className="text-xs font-bold text-slate-400 font-mono w-6">
                       #{idx + 1}
                     </span>
+
+                    <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-bold uppercase bg-slate-100">
+                      {resultado.cidade}-{resultado.estado}
+                    </Badge>
 
                     {resultado.isNew && (
                       <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 text-[10px] px-2 py-0.5 animate-pulse">
@@ -417,14 +419,10 @@ export function ProspeccaoDirect() {
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground border rounded-lg bg-white">
           <Building className="h-12 w-12 opacity-20" />
           <p className="text-sm font-medium">
-            {estado && cidade
-              ? `Nenhum imóvel prospectado sincronizado para ${cidade}-${estado}`
-              : "Selecione o Estado e a Cidade para visualizar os imóveis prospectados"}
+            Nenhum imóvel prospectado sincronizado no momento
           </p>
           <p className="text-xs text-center max-w-xs">
-            {estado && cidade
-              ? "Execute o Agente Desktop no seu computador para rastrear e sincronizar novos lançamentos nesta região."
-              : "Selecione a localização acima para carregar o histórico de lançamentos e exclusões."}
+            Execute o Agente Desktop no seu computador para rastrear e enviar imóveis capturados para este painel.
           </p>
         </div>
       )}

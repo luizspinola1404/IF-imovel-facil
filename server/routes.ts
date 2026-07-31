@@ -325,9 +325,6 @@ export async function registerRoutes(
 
   app.get("/api/prospeccao/leads", isAuthenticated, async (req, res) => {
     const { estado, cidade, tipo, modalidade, status } = req.query as any;
-    if (!estado || !cidade || !tipo || !modalidade) {
-      return res.status(400).json({ error: "Parâmetros obrigatórios: estado, cidade, tipo, modalidade" });
-    }
 
     try {
       const leads = await listarLeadsProspeccao({ estado, cidade, tipo, modalidade, status });
