@@ -1,15 +1,12 @@
 import { useState, useEffect } from "react";
 import {
   Server,
-  Key,
   Clock,
   Play,
   Save,
   Plus,
   Trash2,
   Globe,
-  Sparkles,
-  AlertCircle,
   CheckCircle,
   Building,
   RefreshCw,
@@ -17,7 +14,6 @@ import {
 
 interface AgentConfig {
   server_url: string;
-  api_key: string;
   polling_schedules: string[];
   estado: string;
   cidade: string;
@@ -40,7 +36,6 @@ const ESTADOS = ["ES", "SP", "RJ", "MG", "BA", "CE", "PR", "SC", "RS", "PE", "GO
 export function App() {
   const [config, setConfig] = useState<AgentConfig>({
     server_url: "https://luizspinolaimoveis.com.br",
-    api_key: "",
     polling_schedules: ["08:00", "12:00", "16:00", "20:00"],
     estado: "ES",
     cidade: "São Mateus",
@@ -51,7 +46,6 @@ export function App() {
 
   const [novoHorario, setNovoHorario] = useState("");
   const [executando, setExecutando] = useState(false);
-  const [ultimoResultado, setUltimoResultado] = useState<SyncResult | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
@@ -95,7 +89,6 @@ export function App() {
     adicionarLog(`Iniciando raspagem de imóveis em ${config.cidade}-${config.estado} para a OLX...`);
 
     try {
-      // Simula / Executa chamada tauri invoke se disponivel ou HTTP direto
       const targetUrl = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/sync`;
       adicionarLog(`Enviando dados capturados para a API ${targetUrl}...`);
 
@@ -123,7 +116,6 @@ export function App() {
           removidos_encontrados: data.removidosEncontrados || 0,
           message: `Sincronização concluída com o servidor ${config.server_url}!`,
         };
-        setUltimoResultado(resObj);
         adicionarLog(`✅ Concluído! ${resObj.novos_encontrados} novos imóveis descobertos, ${resObj.removidos_encontrados} desativados.`);
       } else {
         throw new Error(`Servidor respondeu HTTP ${res.status}`);
@@ -145,7 +137,7 @@ export function App() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white">
-              Agente Desktop de Prospecção (Multi-Servidor)
+              Agente Desktop de Prospecção
             </h1>
             <p className="text-xs text-slate-400">
               Software de Prospecção de Imóveis • Compatível com Windows, macOS & Linux
@@ -172,47 +164,28 @@ export function App() {
         </div>
       )}
 
-      {/* Seção 1: Configuração do Servidor do Cliente */}
+      {/* Seção 1: Configuração do Servidor */}
       <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5 space-y-4">
         <div className="flex items-center gap-2 text-sm font-bold text-purple-400">
           <Server className="h-4 w-4" />
-          <span>Conexão Multi-Servidor (Configuração do Cliente)</span>
+          <span>Servidor do Site</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs text-slate-400">URL do Servidor do Site</label>
-            <div className="relative">
-              <Globe className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-              <input
-                type="text"
-                value={config.server_url}
-                onChange={(e) => setConfig({ ...config, server_url: e.target.value })}
-                placeholder="https://suaimobiliaria.com.br"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-              />
-            </div>
-            <p className="text-[11px] text-slate-500">
-              URL do site onde os imóveis capturados serão armazenados e visualizados.
-            </p>
+        <div className="space-y-1.5">
+          <label className="text-xs text-slate-400">URL do Servidor do Site</label>
+          <div className="relative">
+            <Globe className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+            <input
+              type="text"
+              value={config.server_url}
+              onChange={(e) => setConfig({ ...config, server_url: e.target.value })}
+              placeholder="https://luizspinolaimoveis.com.br"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+            />
           </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs text-slate-400">Chave de API / Token do Corretor (Opcional)</label>
-            <div className="relative">
-              <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-              <input
-                type="password"
-                value={config.api_key}
-                onChange={(e) => setConfig({ ...config, api_key: e.target.value })}
-                placeholder="Inserir token de autenticação..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-              />
-            </div>
-            <p className="text-[11px] text-slate-500">
-              Permite vincular as buscas com a conta exclusiva do corretor no servidor.
-            </p>
-          </div>
+          <p className="text-[11px] text-slate-500">
+            URL do servidor do site onde os imóveis capturados serão armazenados e exibidos.
+          </p>
         </div>
       </div>
 

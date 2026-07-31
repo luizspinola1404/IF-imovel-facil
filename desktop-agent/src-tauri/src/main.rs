@@ -10,7 +10,6 @@ use tauri::State;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub server_url: String,
-    pub api_key: String,
     pub polling_schedules: Vec<String>, // Ex: ["08:00", "12:00", "16:00", "20:00"]
     pub estado: String,
     pub cidade: String,
@@ -23,7 +22,6 @@ impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             server_url: "https://luizspinolaimoveis.com.br".to_string(),
-            api_key: "".to_string(),
             polling_schedules: vec![
                 "08:00".to_string(),
                 "12:00".to_string(),
@@ -175,11 +173,7 @@ async fn enviar_para_servidor(config: &AgentConfig, items: Vec<ScrapedItem>) -> 
     });
 
     let client = reqwest::Client::new();
-    let mut req = client.post(&sync_endpoint).json(&payload);
-
-    if !config.api_key.is_empty() {
-        req = req.header("Authorization", format!("Bearer {}", config.api_key));
-    }
+    let req = client.post(&sync_endpoint).json(&payload);
 
     match req.send().await {
         Ok(resp) => {
