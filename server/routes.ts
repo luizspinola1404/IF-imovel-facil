@@ -13,7 +13,7 @@ import { users } from "@shared/models/auth";
 import { scryptSync, randomBytes } from "crypto";
 import multer from "multer";
 import { ensureBucketExists, uploadImage, deleteObjects, isMinioUrl, extractKeyFromUrl } from "./minio";
-import { sincronizarLoteProspeccao, listarLeadsProspeccao } from "./services/prospeccao";
+import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao } from "./services/prospeccao";
 
 // Helper function to hash passwords using Node.js crypto  
 function hashPassword(password: string): string {
@@ -372,6 +372,26 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Erro ao listar leads de prospecção:", err);
       res.status(500).json({ error: "Erro ao buscar leads de prospecção" });
+    }
+  });
+
+  app.delete("/api/prospeccao/leads/:id", async (req, res) => {
+    try {
+      await excluirLeadProspeccao(req.params.id);
+      res.json({ ok: true, message: "Lead excluído com sucesso!" });
+    } catch (err) {
+      console.error("Erro ao excluir lead de prospecção:", err);
+      res.status(500).json({ error: "Erro ao excluir lead" });
+    }
+  });
+
+  app.delete("/api/prospeccao/leads", async (_req, res) => {
+    try {
+      await limparTodosLeadsProspeccao();
+      res.json({ ok: true, message: "Todos os imóveis prospectados foram removidos!" });
+    } catch (err) {
+      console.error("Erro ao limpar lista de prospecção:", err);
+      res.status(500).json({ error: "Erro ao limpar imóveis prospectados" });
     }
   });
 

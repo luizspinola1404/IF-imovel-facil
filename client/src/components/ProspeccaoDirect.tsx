@@ -13,6 +13,7 @@ import {
   Sparkles,
   AlertTriangle,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 interface ScraperResult {
@@ -37,6 +38,7 @@ export function ProspeccaoDirect() {
   const [resultados, setResultados] = useState<ScraperResult[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [leadsSalvosIds, setLeadsSalvosIds] = useState<Set<string>>(new Set());
   const [filtroTexto, setFiltroTexto] = useState("");
 
@@ -65,6 +67,66 @@ export function ProspeccaoDirect() {
   useEffect(() => {
     carregarLeadsSincronizados();
   }, []);
+
+  const handleExcluirLead = async (id: string) => {
+    setExcluindoId(id);
+    try {
+      const res = await fetch(`/api/prospeccao/leads/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Erro ao excluir imóvel prospectado");
+      }
+
+      setResultados((prev) => prev.filter((item) => item.id !== id));
+
+      toast({
+        title: "Imóvel Excluído",
+        description: "O lead foi removido da lista.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao excluir",
+        description: err.message || "Não foi possível excluir este imóvel.",
+        variant: "destructive",
+      });
+    } finally {
+      setExcluindoId(null);
+    }
+  };
+
+  const handleLimparTodos = async () => {
+    if (!window.confirm("Tem certeza que deseja excluir TODOS os imóveis prospectados da lista?")) {
+      return;
+    }
+
+    setCarregando(true);
+    try {
+      const res = await fetch("/api/prospeccao/leads", {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Erro ao limpar lista de prospecção");
+      }
+
+      setResultados([]);
+
+      toast({
+        title: "Lista Limpa!",
+        description: "Todos os imóveis prospectados foram excluídos com sucesso.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao limpar lista",
+        description: err.message || "Não foi possível excluir a lista.",
+        variant: "destructive",
+      });
+    } finally {
+      setCarregando(false);
+    }
+  };
 
   const handleSalvarLead = async (resultado: ScraperResult) => {
     setSalvandoId(resultado.id);
@@ -123,16 +185,31 @@ export function ProspeccaoDirect() {
           </p>
         </div>
 
-        <Button
-          onClick={carregarLeadsSincronizados}
-          disabled={carregando}
-          variant="outline"
-          size="sm"
-          className="gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
-          Atualizar Lista
-        </Button>
+        <div className="flex items-center gap-2">
+          {resultados.length > 0 && (
+            <Button
+              onClick={handleLimparTodos}
+              disabled={carregando}
+              variant="outline"
+              size="sm"
+              className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+            >
+              <Trash2 className="h-4 w-4" />
+              Limpar Lista
+            </Button>
+          )}
+
+          <Button
+            onClick={carregarLeadsSincronizados}
+            disabled={carregando}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
+            Atualizar Lista
+          </Button>
+        </div>
       </div>
 
       {carregando && (
@@ -237,6 +314,21 @@ export function ProspeccaoDirect() {
                           <PlusCircle className="h-3 w-3" />
                           <span>Salvar Lead</span>
                         </>
+                      )}
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={excluindoId === resultado.id}
+                      onClick={() => handleExcluirLead(resultado.id)}
+                      className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Excluir imóvel da lista"
+                    >
+                      {excluindoId === resultado.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
                       )}
                     </Button>
                   </div>

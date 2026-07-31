@@ -249,3 +249,20 @@ export async function listarLeadsProspeccao(params?: Partial<BuscaParams>): Prom
     return [];
   }
 }
+
+/**
+ * Exclui um lead específico pelo ID.
+ */
+export async function excluirLeadProspeccao(id: string) {
+  await ensureTablesExist();
+  await db.delete(prospeccaoLeads).where(eq(prospeccaoLeads.id, id));
+}
+
+/**
+ * Limpa todos os leads e lotes de prospecção armazenados.
+ */
+export async function limparTodosLeadsProspeccao() {
+  await ensureTablesExist();
+  await pool.query("DELETE FROM prospeccao_leads");
+  await pool.query("DELETE FROM prospeccao_batches");
+}
