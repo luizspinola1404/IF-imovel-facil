@@ -13,7 +13,7 @@ import { users } from "@shared/models/auth";
 import { scryptSync, randomBytes } from "crypto";
 import multer from "multer";
 import { ensureBucketExists, uploadImage, deleteObjects, isMinioUrl, extractKeyFromUrl } from "./minio";
-import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao } from "./services/prospeccao";
+import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao, atualizarStatusLeadProspeccao } from "./services/prospeccao";
 
 // Helper function to hash passwords using Node.js crypto  
 function hashPassword(password: string): string {
@@ -422,46 +422,20 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/prospeccao/salvar-lead", isAuthenticated, async (req, res) => {
+  app.post("/api/prospeccao/marcar-lead", async (req, res) => {
     try {
-      const { titulo, link, trecho, cidade, estado, tipo, modalidade } = req.body || {};
-      if (!titulo) {
-        return res.status(400).json({ error: "Campos obrigatórios faltando" });
+      const { id, status } = req.body || {};
+      if (!id) {
+        return res.status(400).json({ error: "ID do lead é obrigatório" });
       }
 
-      let category = "house";
-      if (tipo) {
-        const t = tipo.toLowerCase();
-        if (t.includes("apartamento") || t.includes("ap")) {
-          category = "apartment";
-        } else if (t.includes("terreno") || t.includes("lote")) {
-          category = "land";
-        } else if (t.includes("comercial") || t.includes("sala") || t.includes("galpão")) {
-          category = "commercial";
-        }
-      }
+      const novoStatus = status || "tentou_converter";
+      await atualizarStatusLeadProspeccao(id, novoStatus);
 
-      const type = modalidade === "aluguel" ? "rent" : "sale";
-      const desc = `${trecho || "Lead Prospectado automaticamente."}\n\nLink Original: ${link || "Sem link"}\nLocalização: ${cidade} - ${estado}`;
-
-      const newProperty = await storage.createProperty({
-        title: titulo,
-        description: desc,
-        type,
-        category,
-        price: "0",
-        neighborhood: cidade || "Indefinido",
-        bedrooms: 0,
-        bathrooms: 0,
-        area: 0,
-        imageUrls: [],
-        status: "available"
-      });
-
-      res.status(201).json(newProperty);
+      res.json({ ok: true, id, status: novoStatus, message: "Lead marcado como em tentativa de conversão com sucesso!" });
     } catch (err) {
-      console.error("Erro ao salvar lead:", err);
-      res.status(500).json({ error: "Erro interno ao salvar lead" });
+      console.error("Erro ao marcar lead:", err);
+      res.status(500).json({ error: "Erro ao atualizar status do lead" });
     }
   });
 

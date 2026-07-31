@@ -4,10 +4,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   ExternalLink,
   Loader2,
   Building,
-  PlusCircle,
   Filter,
   CheckCircle,
   Sparkles,
@@ -15,6 +20,7 @@ import {
   RefreshCw,
   Trash2,
   Download,
+  Target,
 } from "lucide-react";
 
 interface ScraperResult {
@@ -29,7 +35,7 @@ interface ScraperResult {
   tipo: string;
   modalidade: string;
   isNew?: boolean;
-  status?: string; // 'active', 'removed', 'saved'
+  status?: string; // 'active', 'removed', 'tentou_converter'
   firstSeenAt?: string;
   lastSeenAt?: string;
 }
@@ -38,9 +44,8 @@ export function ProspeccaoDirect() {
   const { toast } = useToast();
   const [resultados, setResultados] = useState<ScraperResult[]>([]);
   const [carregando, setCarregando] = useState(false);
-  const [salvandoId, setSalvandoId] = useState<string | null>(null);
+  const [marcandoId, setMarcandoId] = useState<string | null>(null);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
-  const [leadsSalvosIds, setLeadsSalvosIds] = useState<Set<string>>(new Set());
   const [filtroTexto, setFiltroTexto] = useState("");
 
   const carregarLeadsSincronizados = async () => {
@@ -129,34 +134,41 @@ export function ProspeccaoDirect() {
     }
   };
 
-  const handleSalvarLead = async (resultado: ScraperResult) => {
-    setSalvandoId(resultado.id);
+  const handleMarcarConversao = async (id: string, statusAtual?: string) => {
+    setMarcandoId(id);
+    const novoStatus = statusAtual === "tentou_converter" ? "active" : "tentou_converter";
     try {
-      const res = await fetch("/api/prospeccao/salvar-lead", {
+      const res = await fetch("/api/prospeccao/marcar-lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(resultado),
+        body: JSON.stringify({ id, status: novoStatus }),
       });
 
       if (!res.ok) {
-        throw new Error("Erro ao registrar lead no banco");
+        throw new Error("Erro ao atualizar status do lead");
       }
 
-      setLeadsSalvosIds((prev) => new Set(prev).add(resultado.id));
+      setResultados((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, status: novoStatus } : item
+        )
+      );
 
       toast({
-        title: "Lead Salvo!",
-        description: `"${resultado.titulo}" foi cadastrado no sistema.`,
+        title: novoStatus === "tentou_converter" ? "Lead Marcado! 🎯" : "Status Atualizado",
+        description: novoStatus === "tentou_converter"
+          ? "Lead marcado como em tentativa de conversão pelo corretor."
+          : "Status do lead retornado para ativo.",
       });
     } catch (err: any) {
       console.error(err);
       toast({
-        title: "Erro ao salvar lead",
-        description: err.message || "Não foi possível salvar este lead.",
+        title: "Erro ao marcar lead",
+        description: err.message || "Não foi possível atualizar o lead.",
         variant: "destructive",
       });
     } finally {
-      setSalvandoId(null);
+      setMarcandoId(null);
     }
   };
 
@@ -172,9 +184,17 @@ export function ProspeccaoDirect() {
     );
   });
 
+  const leadsPorFonte = resultadosFiltrados.reduce((acc, lead) => {
+    const fonteKey = lead.fonte || "OLX Brasil (Particular)";
+    if (!acc[fonteKey]) acc[fonteKey] = [];
+    acc[fonteKey].push(lead);
+    return acc;
+  }, {} as Record<string, ScraperResult[]>);
+
   const countNovos = resultados.filter((r) => r.isNew).length;
   const countRemovidos = resultados.filter((r) => r.status === "removed").length;
   const countAtivos = resultados.filter((r) => r.status === "active").length;
+  const countTentando = resultados.filter((r) => r.status === "tentou_converter").length;
 
   return (
     <div className="space-y-6">
@@ -182,7 +202,7 @@ export function ProspeccaoDirect() {
         <div>
           <h2 className="text-xl font-bold">Imóveis Prospectados</h2>
           <p className="text-sm text-muted-foreground">
-            Lista completa de todos os imóveis de proprietários particulares sincronizados pelo Agente Desktop.
+            Lista de imóveis de proprietários particulares agrupados por fonte para gestão de contatos e prospecção.
           </p>
         </div>
 
@@ -248,6 +268,12 @@ export function ProspeccaoDirect() {
               <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs px-2.5 py-1">
                 {countAtivos} ativos
               </Badge>
+              {countTentando > 0 && (
+                <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-xs px-2.5 py-1 flex items-center gap-1">
+                  <Target className="h-3 w-3" />
+                  {countTentando} em conversão
+                </Badge>
+              )}
               {countRemovidos > 0 && (
                 <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50 text-xs px-2.5 py-1 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" />
@@ -267,101 +293,137 @@ export function ProspeccaoDirect() {
             </div>
           </div>
 
-          <div className="grid gap-3">
-            {resultadosFiltrados.map((resultado, idx) => (
-              <div key={resultado.id} className="bg-white border rounded-lg p-4 hover:shadow-sm transition-shadow">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="text-xs font-bold text-slate-400 font-mono w-6">
-                      #{idx + 1}
+          <Accordion
+            type="multiple"
+            defaultValue={Object.keys(leadsPorFonte)}
+            className="space-y-4"
+          >
+            {Object.entries(leadsPorFonte).map(([fonteNome, leadsDaFonte]) => (
+              <AccordionItem
+                key={fonteNome}
+                value={fonteNome}
+                className="bg-white border rounded-xl shadow-sm px-4 overflow-hidden border-slate-200"
+              >
+                <AccordionTrigger className="hover:no-underline py-3.5">
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                      🟧 {fonteNome}
                     </span>
-
-                    <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-bold uppercase bg-slate-100">
-                      {resultado.cidade}-{resultado.estado}
+                    <Badge variant="secondary" className="bg-slate-100 text-slate-700 font-mono text-xs">
+                      {leadsDaFonte.length} imóveis
                     </Badge>
-
-                    {resultado.isNew && (
-                      <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 text-[10px] px-2 py-0.5 animate-pulse">
-                        ⭐ NOVO
-                      </Badge>
-                    )}
-
-                    {resultado.status === "removed" ? (
-                      <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
-                        ❌ REMOVIDO DA OLX
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
-                        ATIVO
-                      </Badge>
-                    )}
-
-                    <h4 className="font-semibold text-sm text-slate-800 truncate">
-                      {resultado.titulo}
-                    </h4>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={resultado.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary inline-flex items-center gap-1 hover:underline font-medium bg-slate-50 px-2.5 py-1 rounded border"
-                    >
-                      Abrir Anúncio na OLX
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                    <Button
-                      size="sm"
-                      variant={leadsSalvosIds.has(resultado.id) ? "secondary" : "outline"}
-                      disabled={salvandoId === resultado.id || leadsSalvosIds.has(resultado.id)}
-                      onClick={() => handleSalvarLead(resultado)}
-                      className="h-7 text-xs gap-1 text-primary hover:bg-primary/10 border-primary/30"
-                    >
-                      {salvandoId === resultado.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : leadsSalvosIds.has(resultado.id) ? (
-                        <>
-                          <CheckCircle className="h-3 w-3 text-green-600" />
-                          <span>Salvo</span>
-                        </>
-                      ) : (
-                        <>
-                          <PlusCircle className="h-3 w-3" />
-                          <span>Salvar Lead</span>
-                        </>
-                      )}
-                    </Button>
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-4">
+                  <div className="grid gap-3">
+                    {leadsDaFonte.map((resultado, idx) => (
+                      <div key={resultado.id} className="bg-slate-50/70 border rounded-lg p-4 hover:shadow-sm transition-shadow">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-xs font-bold text-slate-400 font-mono w-6">
+                              #{idx + 1}
+                            </span>
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={excluindoId === resultado.id}
-                      onClick={() => handleExcluirLead(resultado.id)}
-                      className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                      title="Excluir imóvel da lista"
-                    >
-                      {excluindoId === resultado.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
+                            <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-bold uppercase bg-white">
+                              {resultado.cidade}-{resultado.estado}
+                            </Badge>
+
+                            {resultado.isNew && (
+                              <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 text-[10px] px-2 py-0.5 animate-pulse">
+                                ⭐ NOVO
+                              </Badge>
+                            )}
+
+                            {resultado.status === "tentou_converter" ? (
+                              <Badge className="bg-purple-600 hover:bg-purple-700 text-white border-0 text-[10px] px-2 py-0.5 flex items-center gap-1">
+                                🎯 TENTATIVA DE CONVERSÃO
+                              </Badge>
+                            ) : resultado.status === "removed" ? (
+                              <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
+                                ❌ REMOVIDO DA OLX
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
+                                ATIVO
+                              </Badge>
+                            )}
+
+                            <h4 className="font-semibold text-sm text-slate-800 truncate">
+                              {resultado.titulo}
+                            </h4>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={resultado.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary inline-flex items-center gap-1 hover:underline font-medium bg-white px-2.5 py-1 rounded border"
+                            >
+                              Abrir Anúncio na OLX
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+
+                            <Button
+                              size="sm"
+                              variant={resultado.status === "tentou_converter" ? "secondary" : "outline"}
+                              disabled={marcandoId === resultado.id}
+                              onClick={() => handleMarcarConversao(resultado.id, resultado.status)}
+                              className={`h-7 text-xs gap-1 font-medium transition-colors ${
+                                resultado.status === "tentou_converter"
+                                  ? "bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200"
+                                  : "text-slate-700 hover:bg-slate-100 border-slate-300 bg-white"
+                              }`}
+                            >
+                              {marcandoId === resultado.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : resultado.status === "tentou_converter" ? (
+                                <>
+                                  <Target className="h-3 w-3 text-purple-600" />
+                                  <span>Tentou Converter 🎯</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Target className="h-3 w-3 text-slate-500" />
+                                  <span>Marcar Conversão</span>
+                                </>
+                              )}
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={excluindoId === resultado.id}
+                              onClick={() => handleExcluirLead(resultado.id)}
+                              className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                              title="Excluir imóvel da lista"
+                            >
+                              {excluindoId === resultado.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2 pl-8 line-clamp-2">
+                          {resultado.trecho}
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mt-2 pl-8">
+                          <span className="truncate max-w-md">{resultado.link}</span>
+                          {resultado.lastSeenAt && (
+                            <span className="shrink-0 text-slate-400">
+                              Atualizado em: {new Date(resultado.lastSeenAt).toLocaleDateString("pt-BR")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2 pl-8 line-clamp-2">
-                  {resultado.trecho}
-                </p>
-                <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mt-2 pl-8">
-                  <span className="truncate max-w-md">{resultado.link}</span>
-                  {resultado.lastSeenAt && (
-                    <span className="shrink-0 text-slate-400">
-                      Atualizado em: {new Date(resultado.lastSeenAt).toLocaleDateString("pt-BR")}
-                    </span>
-                  )}
-                </div>
-              </div>
+                </AccordionContent>
+              </AccordionItem>
             ))}
-          </div>
+          </Accordion>
         </div>
       )}
 

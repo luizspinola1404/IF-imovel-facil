@@ -259,6 +259,17 @@ export async function excluirLeadProspeccao(id: string) {
 }
 
 /**
+ * Atualiza o status do lead (ex: 'tentou_converter', 'active', 'em_atendimento') sem cadastrar imóvel.
+ */
+export async function atualizarStatusLeadProspeccao(id: string, status: string) {
+  await ensureTablesExist();
+  await db
+    .update(prospeccaoLeads)
+    .set({ status, lastSeenAt: new Date() })
+    .where(eq(prospeccaoLeads.id, id));
+}
+
+/**
  * Limpa todos os leads e lotes de prospecção armazenados.
  */
 export async function limparTodosLeadsProspeccao() {
