@@ -91,7 +91,7 @@ async function buscarOLXParticular(params: BuscaParams): Promise<ScraperResult[]
   const cleanTipo = normalizarTexto(tipo);
   const mode = modalidade.toLowerCase() === "aluguel" ? "aluguel" : "venda";
 
-  const olxUrl = `https://www.olx.com.br/imoveis/${mode}/${cleanTipo}/estado-${cleanState}/${cleanCity}?f=p`;
+  const olxUrl = `https://www.olx.com.br/imoveis/${mode}/${cleanTipo}/estado-${cleanState}?f=p&q=${cleanCity}`;
 
   try {
     const response = await axios.get(olxUrl, {

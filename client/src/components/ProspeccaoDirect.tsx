@@ -27,6 +27,7 @@ import {
   PlusCircle,
   Filter,
   CheckCircle,
+  Globe,
 } from "lucide-react";
 
 const TIPOS = ["Casa", "Apartamento", "Terreno", "Comercial"];
@@ -48,81 +49,106 @@ interface ScraperResult {
   modalidade: string;
 }
 
-function ResultCard({
-  resultado,
-  onSalvarLead,
-  salvandoId,
-  salvo,
-}: {
-  resultado: ScraperResult;
-  onSalvarLead: (r: ScraperResult) => void;
-  salvandoId: string | null;
-  salvo: boolean;
-}) {
-  const isSaving = salvandoId === resultado.id;
+function normalizarTexto(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim()
+    .replace(/\s+/g, "+");
+}
 
-  return (
-    <div className="bg-white border rounded-xl p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-2 items-center justify-between">
-          <div className="flex flex-wrap gap-2 items-center">
-            {resultado.direto_proprietario && (
-              <Badge className="bg-green-600 hover:bg-green-700 text-white border-0 text-[10px] px-2 py-0">
-                Direto com Proprietário
-              </Badge>
-            )}
-            <Badge variant="outline" className="capitalize text-[10px] px-2 py-0">
-              {resultado.modalidade}
-            </Badge>
-            <span className="text-[10px] text-muted-foreground font-mono">
-              {resultado.fonte}
-            </span>
-          </div>
+function mapearTipo(tipo: string): string {
+  const lower = tipo.toLowerCase();
+  if (lower.includes("casa")) return "casas";
+  if (lower.includes("ap")) return "apartamentos";
+  if (lower.includes("terr") || lower.includes("lote")) return "terrenos-e-lotes";
+  if (lower.includes("comerc")) return "comercio-e-industria";
+  return "imoveis";
+}
 
-          <Button
-            size="sm"
-            variant={salvo ? "secondary" : "outline"}
-            disabled={isSaving || salvo}
-            onClick={() => onSalvarLead(resultado)}
-            className="h-7 text-xs gap-1 text-primary hover:bg-primary/10 border-primary/30"
-          >
-            {isSaving ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : salvo ? (
-              <>
-                <CheckCircle className="h-3 w-3 text-green-600" />
-                <span>Salvo</span>
-              </>
-            ) : (
-              <>
-                <PlusCircle className="h-3 w-3" />
-                <span>Salvar Lead</span>
-              </>
-            )}
-          </Button>
-        </div>
+function gerarId(titulo: string, link: string): string {
+  const raw = `${titulo}${link}`;
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16);
+}
 
-        <h3 className="font-semibold text-base text-slate-800 leading-tight">
-          {resultado.titulo}
-        </h3>
-        <p className="text-sm text-muted-foreground line-clamp-2">
-          {resultado.trecho}
-        </p>
+async function rasparOLXNoNavegador(params: {
+  estado: string;
+  cidade: string;
+  tipo: string;
+  modalidade: string;
+}): Promise<ScraperResult[]> {
+  const cleanState = params.estado.toLowerCase();
+  const cleanCity = normalizarTexto(params.cidade);
+  const cleanTipo = mapearTipo(params.tipo);
+  const mode = params.modalidade.toLowerCase() === "aluguel" ? "aluguel" : "venda";
 
-        <div className="flex flex-wrap gap-4 pt-1 items-center">
-          <a
-            href={resultado.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-primary inline-flex items-center gap-1 hover:underline font-medium"
-          >
-            Ver anúncio original
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-      </div>
-    </div>
-  );
+  const targetUrl = `https://www.olx.com.br/imoveis/${mode}/${cleanTipo}/estado-${cleanState}?f=p&q=${cleanCity}`;
+
+  const proxyUrls = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+  ];
+
+  let html = "";
+  for (const proxyUrl of proxyUrls) {
+    try {
+      const response = await fetch(proxyUrl, { cache: "no-store" });
+      if (response.ok) {
+        const text = await response.text();
+        if (text && (text.includes("olx.com.br") || text.includes("/imoveis/"))) {
+          html = text;
+          break;
+        }
+      }
+    } catch {
+      // continua tentando
+    }
+  }
+
+  const results: ScraperResult[] = [];
+  if (html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const anchors = Array.from(doc.querySelectorAll("a[href]"));
+
+    const seen = new Set<string>();
+    for (const a of anchors) {
+      const href = a.getAttribute("href") || "";
+      if (href.includes("olx.com.br") && href.includes("/imoveis/") && /-\d{8,}/.test(href)) {
+        if (!seen.has(href)) {
+          seen.add(href);
+          const fullLink = href.startsWith("http") ? href : `https://www.olx.com.br${href}`;
+          const titleText = a.textContent?.trim() || "";
+          const title = titleText.length > 5 ? titleText : `Imóvel Direto com Proprietário em ${params.cidade}-${params.estado}`;
+          const id = gerarId(title, fullLink);
+
+          results.push({
+            id,
+            titulo: title,
+            link: fullLink,
+            fonte: "olx.com.br (Particular)",
+            trecho: `Imóvel particular anunciado na OLX em ${params.cidade}-${params.estado}. Contato direto de proprietário.`,
+            direto_proprietario: true,
+            cidade: params.cidade,
+            estado: params.estado,
+            tipo: params.tipo,
+            modalidade: params.modalidade,
+          });
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 export function ProspeccaoDirect() {
@@ -278,6 +304,23 @@ export function ProspeccaoDirect() {
     setResultados([]);
     setFiltroTexto("");
 
+    // 1. Tenta a raspagem no cliente (navegador residencial do usuário)
+    try {
+      const clientResults = await rasparOLXNoNavegador({ estado, cidade, tipo, modalidade });
+      if (clientResults && clientResults.length > 0) {
+        setResultados(clientResults);
+        toast({
+          title: "Busca concluída no navegador!",
+          description: `${clientResults.length} imóveis de proprietários particulares extraídos em ${cidade}-${estado}.`,
+        });
+        setBuscando(false);
+        return;
+      }
+    } catch (clientErr) {
+      console.log("Raspagem client-side falhou, redirecionando para servidor:", clientErr);
+    }
+
+    // 2. Fallback via Servidor
     try {
       const res = await fetch("/api/prospeccao/buscar", {
         method: "POST",
@@ -295,7 +338,7 @@ export function ProspeccaoDirect() {
 
       toast({
         title: "Busca concluída!",
-        description: `${data.length} anúncios/fontes de proprietários diretos encontrados em ${cidade}-${estado}.`,
+        description: `${data.length} anúncios de proprietários diretos encontrados em ${cidade}-${estado}.`,
       });
     } catch (err: any) {
       console.error(err);
@@ -307,6 +350,25 @@ export function ProspeccaoDirect() {
     } finally {
       setBuscando(false);
     }
+  };
+
+  const handleAbrirPesquisaDiretaOLX = () => {
+    if (!estado || !cidade || !tipo || !modalidade) {
+      toast({
+        title: "Preencha todos os campos",
+        description: "Selecione o estado, cidade, tipo e modalidade antes de abrir.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const cleanState = estado.toLowerCase();
+    const cleanCity = normalizarTexto(cidade);
+    const cleanTipo = mapearTipo(tipo);
+    const mode = modalidade.toLowerCase() === "aluguel" ? "aluguel" : "venda";
+    const url = `https://www.olx.com.br/imoveis/${mode}/${cleanTipo}/estado-${cleanState}?f=p&q=${cleanCity}`;
+
+    window.open(url, "_blank");
   };
 
   const handleSalvarLead = async (resultado: ScraperResult) => {
@@ -432,7 +494,7 @@ export function ProspeccaoDirect() {
           </Select>
         </div>
 
-        <div className="md:col-span-4 flex gap-3 mt-2">
+        <div className="md:col-span-4 flex flex-wrap gap-3 mt-2">
           <Button
             onClick={handleBuscar}
             disabled={buscando}
@@ -449,6 +511,17 @@ export function ProspeccaoDirect() {
                 Buscar Proprietários Diretos
               </>
             )}
+          </Button>
+
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleAbrirPesquisaDiretaOLX}
+            className="gap-2 border text-slate-700 bg-white hover:bg-slate-100"
+            title="Abrir busca direta filtrada na OLX"
+          >
+            <Globe className="h-4 w-4 text-purple-600" />
+            <span>Abrir Busca na OLX</span>
           </Button>
 
           <Button
