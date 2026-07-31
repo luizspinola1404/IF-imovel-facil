@@ -1,0 +1,14 @@
+/home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/deps/serde-a0484f3d36cb6136.d: /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/build/serde-5b447284e4f928e0/out/private.rs
+
+/home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/deps/libserde-a0484f3d36cb6136.rlib: /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/build/serde-5b447284e4f928e0/out/private.rs
+
+/home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/deps/libserde-a0484f3d36cb6136.rmeta: /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/build/serde-5b447284e4f928e0/out/private.rs
+
+/home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs:
+/home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs:
+/home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs:
+/home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs:
+/home/claus/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs:
+/home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/build/serde-5b447284e4f928e0/out/private.rs:
+
+# env-dep:OUT_DIR=/home/claus/src/IF-imovel-facil/desktop-agent/src-tauri/target/debug/build/serde-5b447284e4f928e0/out

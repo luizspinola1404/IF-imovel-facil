@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "Agente Desktop Multiplataforma para Prospecção Automática de Imóveis"
 authors = ["Imóvel Fácil Team"]
 edition = "2021"
+build = "build.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
@@ -19,5 +20,4 @@ regex = "1.10"
 scraper = "0.18"
 
 [features]
-# por padrão desabilita janela de terminal extra no Windows em produção
 custom-protocol = ["tauri/custom-protocol"]
