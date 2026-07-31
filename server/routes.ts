@@ -367,6 +367,16 @@ export async function registerRoutes(
   });
 
   // Prospecção Sincronização Inteligente & Agente Desktop
+  app.use("/api/prospeccao", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   app.post("/api/prospeccao/sync", async (req, res) => {
     const { estado, cidade, tipo, modalidade, items } = req.body || {};
     if (!estado || !cidade || !tipo || !modalidade) {

@@ -50,8 +50,8 @@ export function ProspeccaoDirect() {
   const [filtroTipo, setFiltroTipo] = useState("Todos");
   const [filtroModalidade, setFiltroModalidade] = useState("Todos");
 
-  const carregarLeadsSincronizados = async () => {
-    setCarregando(true);
+  const carregarLeadsSincronizados = async (mostrarCarregando = false) => {
+    if (mostrarCarregando) setCarregando(true);
     try {
       const res = await fetch("/api/prospeccao/leads");
       if (!res.ok) {
@@ -62,23 +62,20 @@ export function ProspeccaoDirect() {
       setResultados(data);
     } catch (err: any) {
       console.error(err);
-      toast({
-        title: "Erro ao carregar dados",
-        description: err.message || "Não foi possível carregar os imóveis prospectados.",
-        variant: "destructive",
-      });
+      if (mostrarCarregando) {
+        toast({
+          title: "Erro ao carregar dados",
+          description: err.message || "Não foi possível carregar os imóveis prospectados.",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setCarregando(false);
+      if (mostrarCarregando) setCarregando(false);
     }
   };
 
   useEffect(() => {
-    carregarLeadsSincronizados();
-    // Atualiza a lista automaticamente a cada 10 segundos para exibir novos imóveis sincronizados
-    const interval = setInterval(() => {
-      carregarLeadsSincronizados();
-    }, 10000);
-    return () => clearInterval(interval);
+    carregarLeadsSincronizados(true);
   }, []);
 
   const handleExcluirLead = async (id: string) => {

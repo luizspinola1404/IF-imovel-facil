@@ -380,6 +380,75 @@ async fn enviar_para_servidor(
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ServerConfigResponse {
+    pub cidades: Option<Vec<CidadeAlvo>>,
+    pub polling_schedules: Option<Vec<String>>,
+    pub auto_polling_enabled: Option<bool>,
+}
+
+#[tauri::command]
+async fn fetch_server_config(server_url: String, state: State<'_, AppState>) -> Result<ServerConfigResponse, String> {
+    let base_url = server_url.trim_end_matches('/');
+    let endpoint = format!("{}/api/prospeccao/cidades-alvo", base_url);
+    println!("DEBUG: Buscando configurações nativas do servidor: {}", endpoint);
+
+    let client = reqwest::Client::new();
+    match client.get(&endpoint).timeout(std::time::Duration::from_secs(5)).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            if status.is_success() {
+                if let Ok(data) = resp.json::<ServerConfigResponse>().await {
+                    println!("DEBUG: Configurações recebidas do servidor via Rust nativo: {:?}", data);
+                    let mut cfg = state.config.lock().unwrap();
+                    if let Some(ref list) = data.cidades {
+                        cfg.cidades_alvo = Some(list.clone());
+                    }
+                    if let Some(ref scheds) = data.polling_schedules {
+                        cfg.polling_schedules = scheds.clone();
+                    }
+                    if let Some(auto) = data.auto_polling_enabled {
+                        cfg.auto_polling_enabled = auto;
+                    }
+                    return Ok(data);
+                }
+            }
+            Err(format!("Servidor respondeu HTTP {}", status))
+        }
+        Err(e) => Err(format!("Erro de conexão nativa: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn sync_server_config(server_url: String, config: AgentConfig, state: State<'_, AppState>) -> Result<String, String> {
+    let base_url = server_url.trim_end_matches('/');
+    let endpoint = format!("{}/api/prospeccao/cidades-alvo", base_url);
+    println!("DEBUG: Sincronizando configurações nativas com o servidor: {}", endpoint);
+
+    {
+        let mut cfg = state.config.lock().unwrap();
+        *cfg = config.clone();
+    }
+
+    let payload = serde_json::json!({
+        "cidades": config.cidades_alvo.unwrap_or_default(),
+        "polling_schedules": config.polling_schedules,
+        "auto_polling_enabled": config.auto_polling_enabled
+    });
+
+    let client = reqwest::Client::new();
+    match client.post(&endpoint).timeout(std::time::Duration::from_secs(5)).json(&payload).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                Ok("Sincronizado com sucesso!".to_string())
+            } else {
+                Err(format!("Servidor respondeu HTTP {}", resp.status()))
+            }
+        }
+        Err(e) => Err(format!("Erro ao sincronizar com servidor: {}", e)),
+    }
+}
+
 #[tauri::command]
 fn get_config(state: State<'_, AppState>) -> AgentConfig {
     state.config.lock().unwrap().clone()
@@ -511,6 +580,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
+            fetch_server_config,
+            sync_server_config,
             execute_prospeccao_now
         ])
         .setup(|app| {

@@ -65,7 +65,22 @@ export function App() {
   const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
+
+
   const sincronizarConfigComServidor = async (cfg: AgentConfig) => {
+    // 1. Se estiver no Tauri, usar o comando HTTP nativo em Rust (imune a CORS)
+    if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("sync_server_config", { serverUrl: cfg.server_url, config: cfg });
+        console.log("[TAURI] Configurações sincronizadas via Rust nativo com sucesso!");
+        return;
+      } catch (err) {
+        console.error("[TAURI] Erro na sincronização nativa Rust:", err);
+      }
+    }
+
+    // 2. Fallback para navegador web padrão
     try {
       const endpoint = `${cfg.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
       await fetch(endpoint, {
@@ -96,9 +111,6 @@ export function App() {
     const novaLista = [...lista, { estado: config.estado, cidade: config.cidade }];
     const novaConfig = { ...config, cidades_alvo: novaLista };
     setConfig(novaConfig);
-    if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-      import("@tauri-apps/api/core").then(({ invoke }) => invoke("save_config", { config: novaConfig }));
-    }
     sincronizarConfigComServidor(novaConfig);
     adicionarLog(`Cidade alvo adicionada e salva no servidor: ${config.cidade} - ${config.estado}`);
   };
@@ -109,13 +121,11 @@ export function App() {
     const novaLista = lista.filter((_, idx) => idx !== index);
     const novaConfig = { ...config, cidades_alvo: novaLista };
     setConfig(novaConfig);
-    if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-      import("@tauri-apps/api/core").then(({ invoke }) => invoke("save_config", { config: novaConfig }));
-    }
     sincronizarConfigComServidor(novaConfig);
     adicionarLog(`Cidade ${cidadeRemovida?.cidade} removida. Imóveis desta cidade foram apagados do servidor remoto.`);
   };
 
+  // Popula o dropdown de cidades do IBGE quando o estado muda - NUNCA toca em cidades_alvo
   useEffect(() => {
     if (!config.estado) return;
     setCarregandoCidades(true);
@@ -125,33 +135,53 @@ export function App() {
         if (Array.isArray(data)) {
           const lista = data.map((c: any) => ({ id: c.id, nome: c.nome }));
           setCidadesIBGE(lista);
-          // Se a cidade atual não pertence ao novo estado, seleciona a primeira do IBGE
-          if (lista.length > 0 && !lista.some((c) => c.nome.toLowerCase() === config.cidade.toLowerCase())) {
-            setConfig((prev) => ({ ...prev, cidade: lista[0].nome }));
-          }
         }
       })
       .catch((err) => console.error("Erro ao buscar cidades no IBGE:", err))
       .finally(() => setCarregandoCidades(false));
   }, [config.estado]);
 
-  // Carregar configurações completas salvas no Servidor ao iniciar o App
+  // GET remoto ao abrir o app: carrega cidades e agendamentos do servidor
   useEffect(() => {
-    const endpoint = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
-    fetch(endpoint)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data) {
-          console.log("Configurações salvas no servidor:", data);
+    const carregarConfigInicial = async () => {
+      // 1. Se estiver no ambiente Tauri Desktop, usa o comando HTTP nativo do Rust (imune a CORS)
+      if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const data: any = await invoke("fetch_server_config", { serverUrl: config.server_url });
+          if (data) {
+            console.log("[TAURI RUST] Configurações recebidas do servidor:", data);
+            setConfig((prev) => ({
+              ...prev,
+              cidades_alvo: Array.isArray(data.cidades) ? data.cidades : prev.cidades_alvo,
+              polling_schedules: Array.isArray(data.polling_schedules) ? data.polling_schedules : prev.polling_schedules,
+              auto_polling_enabled: typeof data.auto_polling_enabled === "boolean" ? data.auto_polling_enabled : prev.auto_polling_enabled,
+            }));
+            return;
+          }
+        } catch (err) {
+          console.error("[TAURI RUST] Falha no fetch nativo:", err);
+        }
+      }
+
+      // 2. Fallback para fetch web padrão
+      const endpoint = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
+      fetch(endpoint)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data) return;
+          console.log("[SERVIDOR] Configurações recebidas:", data);
           setConfig((prev) => ({
             ...prev,
             cidades_alvo: Array.isArray(data.cidades) ? data.cidades : prev.cidades_alvo,
             polling_schedules: Array.isArray(data.polling_schedules) ? data.polling_schedules : prev.polling_schedules,
             auto_polling_enabled: typeof data.auto_polling_enabled === "boolean" ? data.auto_polling_enabled : prev.auto_polling_enabled,
           }));
-        }
-      })
-      .catch((e) => console.error("Erro ao carregar configurações do servidor:", e));
+        })
+        .catch((e) => console.error("[SERVIDOR] Erro ao carregar configurações:", e));
+    };
+
+    carregarConfigInicial();
   }, []);
 
   useEffect(() => {
@@ -284,9 +314,6 @@ export function App() {
         };
       }
 
-      if (resObj.logs && resObj.logs.length > 0) {
-        setLogs(resObj.logs.slice().reverse());
-      }
       adicionarLog(`🎉 Finalizado! ${resObj.novos_encontrados} novos imóveis descobertos, ${resObj.removidos_encontrados} removidos da OLX.`);
     } catch (err: any) {
       adicionarLog(`❌ Erro de execução: ${typeof err === 'object' ? JSON.stringify(err) : String(err)}`);
@@ -325,6 +352,32 @@ export function App() {
       </div>
 
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        {/* Barra de Progresso de Varredura em Destaque */}
+        {progresso && (
+          <div className="bg-blue-900 text-white rounded-xl shadow-lg border border-blue-700 p-5 space-y-3">
+            <div className="flex items-center justify-between text-sm font-bold">
+              <span className="flex items-center gap-2 text-blue-200 uppercase tracking-wide">
+                <RefreshCw className="h-4 w-4 animate-spin text-blue-400" />
+                Progresso da Varredura de Imóveis
+              </span>
+              <span className="bg-blue-800 text-blue-100 px-3 py-1 rounded-full text-xs font-mono font-semibold">
+                Sub-tarefa {progresso.atual} de {progresso.total} ({Math.round((progresso.atual / (progresso.total || 1)) * 100)}%)
+              </span>
+            </div>
+            <div className="w-full bg-blue-950 rounded-full h-3.5 p-0.5 overflow-hidden border border-blue-700 shadow-inner">
+              <div 
+                className="bg-gradient-to-r from-blue-500 via-indigo-400 to-emerald-400 h-2.5 rounded-full transition-all duration-300 ease-out shadow-sm" 
+                style={{ width: `${Math.max(3, (progresso.atual / (progresso.total || 1)) * 100)}%` }}
+              ></div>
+            </div>
+            {logs.length > 0 && (
+              <p className="text-xs text-blue-200 font-mono truncate pt-1 border-t border-blue-800/60">
+                ⚡ Status atual: {logs[0]}
+              </p>
+            )}
+          </div>
+        )}
+
         {mensagemSucesso && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-md text-sm flex items-center gap-2 shadow-sm">
             <CheckCircle className="h-5 w-5 text-emerald-500" />
@@ -388,19 +441,7 @@ export function App() {
                 <div className="flex gap-2">
                   <select
                     value={config.cidade}
-                    onChange={(e) => {
-                      const novaCidadeNome = e.target.value;
-                      const lista = config.cidades_alvo || [];
-                      const jaExiste = lista.some(
-                        (c) => c.cidade.toLowerCase() === novaCidadeNome.toLowerCase() && c.estado === config.estado
-                      );
-                      const novaLista = jaExiste
-                        ? lista
-                        : [...lista, { estado: config.estado, cidade: novaCidadeNome }];
-                      const novaConfig = { ...config, cidade: novaCidadeNome, cidades_alvo: novaLista };
-                      setConfig(novaConfig);
-                      sincronizarConfigComServidor(novaConfig);
-                    }}
+                    onChange={(e) => setConfig((prev) => ({ ...prev, cidade: e.target.value }))}
                     disabled={carregandoCidades}
                     className="h-10 flex-1 bg-white border border-slate-300 rounded-lg px-3 text-sm text-slate-800 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 disabled:bg-slate-100 min-w-0 font-medium shadow-sm"
                   >
