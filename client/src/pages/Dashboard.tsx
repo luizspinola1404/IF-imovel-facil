@@ -175,7 +175,7 @@ export default function Dashboard() {
                   </TabsTrigger>
                   <TabsTrigger value="prospect" className="gap-2">
                     <Search className="h-4 w-4" />
-                    Prospecção Direct
+                    Imóveis Prospectados
                   </TabsTrigger>
                   {user?.role === "admin" && (
                     <TabsTrigger value="admins" className="gap-2">
