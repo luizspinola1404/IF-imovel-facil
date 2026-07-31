@@ -248,7 +248,7 @@ export function ProspeccaoDirect() {
           </Button>
 
           <Button
-            onClick={carregarLeadsSincronizados}
+            onClick={() => carregarLeadsSincronizados(true)}
             disabled={carregando}
             variant="outline"
             size="sm"
