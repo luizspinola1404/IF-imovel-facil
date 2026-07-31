@@ -15,8 +15,8 @@ git push
 ssh root@187.77.43.72 <<'EOF'
 cd /srv/imovel-facil
 git fetch --all && git reset --hard origin/master
-docker compose down --remove-orphans
-docker compose up --build -d
+docker compose build
+docker compose up -d --remove-orphans
 EOF
 
 echo "Deployment finished."
