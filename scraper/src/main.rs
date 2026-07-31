@@ -31,6 +31,28 @@ fn mapear_tipo_imovel(tipo: &str) -> String {
     }
 }
 
+fn normalizar_cidade(cidade: &str) -> String {
+    let unaccented = cidade
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ã' | 'â' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'õ' | 'ô' | 'ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            other => other,
+        })
+        .collect::<String>();
+
+    unaccented
+        .trim()
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join("+")
+}
+
 fn construir_url_olx(estado: &str, cidade: &str, tipo: &str, modalidade: &str) -> String {
     let st = estado.to_lowercase().replace("estado-", "");
     let uf_param = if st != "br" && st != "todos" && !st.is_empty() {
@@ -54,7 +76,7 @@ fn construir_url_olx(estado: &str, cidade: &str, tipo: &str, modalidade: &str) -
 
     let mut query_params = vec!["f=p".to_string()];
     if !cidade.trim().is_empty() {
-        let clean_city = urlencoding::encode(cidade.trim());
+        let clean_city = normalizar_cidade(cidade);
         query_params.push(format!("q={}", clean_city));
     }
 
