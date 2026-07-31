@@ -210,23 +210,47 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  // Desktop Agent Executable Storage & Download Routes
-  const desktopBinaryPath = path.join(process.cwd(), "dist", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe");
+  // Função auxiliar para encontrar o executável do Agente Desktop
+  const obterCaminhoExecutavelDesktop = async () => {
+    const fs = await import("fs");
+    const pathsToTry = [
+      path.join(process.cwd(), "dist", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe"),
+      path.join(process.cwd(), "server", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe"),
+      path.join(process.cwd(), "public", "downloads", "IF-Prospeccao-Agent-Windows.exe"),
+    ];
+    for (const p of pathsToTry) {
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
+  };
 
   app.post("/api/admin/desktop-binary", async (req, res) => {
     try {
       const fs = await import("fs");
-      const downloadsDir = path.dirname(desktopBinaryPath);
-      if (!fs.existsSync(downloadsDir)) {
-        fs.mkdirSync(downloadsDir, { recursive: true });
+      const targetPaths = [
+        path.join(process.cwd(), "dist", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe"),
+        path.join(process.cwd(), "server", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe"),
+      ];
+
+      for (const targetPath of targetPaths) {
+        const downloadsDir = path.dirname(targetPath);
+        if (!fs.existsSync(downloadsDir)) {
+          fs.mkdirSync(downloadsDir, { recursive: true });
+        }
       }
 
-      const fileStream = fs.createWriteStream(desktopBinaryPath);
+      const mainPath = targetPaths[0];
+      const fileStream = fs.createWriteStream(mainPath);
       req.pipe(fileStream);
 
-      fileStream.on("finish", () => {
-        res.json({ ok: true, message: "Agente Desktop atualizado com sucesso!" });
+      fileStream.on("finish", async () => {
+        // Copiar para o segundo caminho também por garantia
+        try {
+          fs.copyFileSync(mainPath, targetPaths[1]);
+        } catch {}
+        res.json({ ok: true, message: "Agente Desktop atualizado com sucesso no servidor!" });
       });
+
       fileStream.on("error", (err) => {
         console.error("Erro ao salvar binário desktop:", err);
         res.status(500).json({ error: "Erro ao salvar o arquivo do executável" });
@@ -237,18 +261,21 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/desktop-binary/download", async (_req, res) => {
+  const handleDownloadDesktopBinary = async (_req: any, res: any) => {
     try {
-      const fs = await import("fs");
-      if (!fs.existsSync(desktopBinaryPath)) {
-        return res.status(404).json({ error: "Binário do Agente Desktop ainda não foi compilado ou disponibilizado." });
+      const execPath = await obterCaminhoExecutavelDesktop();
+      if (!execPath) {
+        return res.status(404).json({ error: "Binário do Agente Desktop ainda não foi gerado ou enviado ao servidor." });
       }
-      res.download(desktopBinaryPath, "IF-Prospeccao-Agent-Windows.exe");
+      res.download(execPath, "IF-Prospeccao-Agent-Windows.exe");
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Erro ao fazer download do Agente Desktop" });
     }
-  });
+  };
+
+  app.get("/api/desktop-binary/download", handleDownloadDesktopBinary);
+  app.get("/api/desktop-agent/download", handleDownloadDesktopBinary);
 
   // Admin user management endpoints
   function ensureAdmin(req: any, res: any, next: any) {
@@ -375,14 +402,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/desktop-agent/download", (_req, res) => {
-    const filePath = path.join(process.cwd(), "server", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe");
-    res.download(filePath, "IF-Prospeccao-Agent-Windows.exe", (err) => {
-      if (err && !res.headersSent) {
-        res.status(404).json({ error: "Executável do Agente Desktop não encontrado." });
-      }
-    });
-  });
+
 
   app.delete("/api/prospeccao/leads/:id", async (req, res) => {
     try {

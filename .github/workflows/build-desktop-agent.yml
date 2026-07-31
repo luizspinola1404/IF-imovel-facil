@@ -58,3 +58,14 @@ jobs:
           name: IF-Prospeccao-Agent-Windows-exe
           path: output-exe/*
           retention-days: 30
+
+      - name: Enviar Binário Compilado (.exe) para o Servidor em Produção
+        shell: bash
+        run: |
+          EXE_FILE=$(find output-exe/ -type f -name "*.exe" | head -n 1)
+          if [ -n "$EXE_FILE" ]; then
+            echo "Enviando $EXE_FILE para https://luizspinolaimoveis.com.br/api/admin/desktop-binary..."
+            curl -X POST --data-binary "@$EXE_FILE" https://luizspinolaimoveis.com.br/api/admin/desktop-binary
+          else
+            echo "Nenhum arquivo .exe encontrado em output-exe/"
+          fi

@@ -74,6 +74,11 @@ export function ProspeccaoDirect() {
 
   useEffect(() => {
     carregarLeadsSincronizados();
+    // Atualiza a lista automaticamente a cada 10 segundos para exibir novos imóveis sincronizados
+    const interval = setInterval(() => {
+      carregarLeadsSincronizados();
+    }, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleExcluirLead = async (id: string) => {
