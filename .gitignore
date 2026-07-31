@@ -13,3 +13,4 @@ playwright/.cache/
 
 # Rust
 scraper/target/
+!scraper/target/release/scraper
