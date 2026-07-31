@@ -174,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Configura o WebDriver do thirtyfour com User-Agent de navegador real
     let mut caps = DesiredCapabilities::firefox();
-    caps.add_arg("--headless")?;
+    caps.set_headless()?;
     caps.add_arg("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")?;
 
     let driver_url = format!("http://localhost:{}", port);
