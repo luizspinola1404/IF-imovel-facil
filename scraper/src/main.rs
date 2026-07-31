@@ -236,7 +236,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     1
                 };
 
-                let re_ad_id = Regex::new(r"-\d+$")?;
+                let re_ad_id = Regex::new(r"-\d{8,}")?;
 
                 for page in 1..=total_pages {
                     if page > 1 {
@@ -247,6 +247,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         tokio::time::sleep(Duration::from_millis(3000)).await;
                     }
+
+                    let _ = driver.execute("window.scrollTo(0, 1500);", vec![]).await;
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
 
                     if let Ok(anchors) = driver.find_all(By::Tag("a")).await {
                         for a in anchors {
