@@ -483,86 +483,87 @@ async fn execute_prospeccao_now(
     };
 
     println!("DEBUG: Configuração ativa definida: {:?}", active_config);
-    let mut logs = Vec::new();
 
-    let cidades_para_raspar = match &active_config.cidades_alvo {
-        Some(lista) if !lista.is_empty() => lista.clone(),
-        _ => vec![CidadeAlvo {
-            estado: active_config.estado.clone(),
-            cidade: active_config.cidade.clone(),
-        }],
-    };
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut logs = Vec::new();
 
-    let tipos = vec!["Casa", "Apartamento", "Terreno", "Comercial"];
-    let modalidades = vec!["venda", "aluguel"];
+        let cidades_para_raspar = match &active_config.cidades_alvo {
+            Some(lista) if !lista.is_empty() => lista.clone(),
+            _ => vec![CidadeAlvo {
+                estado: active_config.estado.clone(),
+                cidade: active_config.cidade.clone(),
+            }],
+        };
 
-    let total_combinacoes = cidades_para_raspar.len() * tipos.len() * modalidades.len();
-    println!("DEBUG: Cidades alvo = {}, total_combinacoes = {}", cidades_para_raspar.len(), total_combinacoes);
-    println!("DEBUG: Chamando registrar_log pela 1a vez...");
-    registrar_log(&app, &mut logs, format!("[{}] 🚀 Iniciando varredura em lote ({} cidades × {} tipos × {} modalidades = {} sub-tarefas)...", timestamp_atual(), cidades_para_raspar.len(), tipos.len(), modalidades.len(), total_combinacoes));
-    println!("DEBUG: Voltou do registrar_log com sucesso!");
+        let tipos = vec!["Casa", "Apartamento", "Terreno", "Comercial"];
+        let modalidades = vec!["venda", "aluguel"];
 
-    let mut total_acumulado = 0;
-    let mut novos_acumulado = 0;
-    let mut removidos_acumulado = 0;
-    let mut last_batch_id = format!("desktop-{}", chrono::Utc::now().timestamp());
-    let mut last_target_url = "".to_string();
-    let mut passo_atual = 1;
+        let total_combinacoes = cidades_para_raspar.len() * tipos.len() * modalidades.len();
+        registrar_log(&app_clone, &mut logs, format!("[{}] 🚀 Iniciando varredura em lote ({} cidades × {} tipos × {} modalidades = {} sub-tarefas)...", timestamp_atual(), cidades_para_raspar.len(), tipos.len(), modalidades.len(), total_combinacoes));
 
-    for alvo in cidades_para_raspar.iter() {
-        registrar_log(&app, &mut logs, format!("[{}] 📍 Iniciando varredura para a Cidade Alvo: {} - {}", timestamp_atual(), alvo.cidade, alvo.estado));
+        let mut _total_acumulado = 0;
+        let mut novos_acumulado = 0;
+        let mut removidos_acumulado = 0;
+        let mut _last_batch_id = format!("desktop-{}", chrono::Utc::now().timestamp());
+        let mut _last_target_url = "".to_string();
+        let mut passo_atual = 1;
 
-        for tipo in &tipos {
-            for modalidade in &modalidades {
-                registrar_log(&app, &mut logs, format!("[{}] 🔄 [{}/{}] Processando {} para {} em {}...", timestamp_atual(), passo_atual, total_combinacoes, tipo, modalidade, alvo.cidade));
+        for alvo in cidades_para_raspar.iter() {
+            registrar_log(&app_clone, &mut logs, format!("[{}] 📍 Iniciando varredura para a Cidade Alvo: {} - {}", timestamp_atual(), alvo.cidade, alvo.estado));
 
-                let (items, target_url) = raspar_olx(
-                    &app,
-                    &alvo.estado,
-                    &alvo.cidade,
-                    tipo,
-                    modalidade,
-                    &mut logs
-                ).await;
+            for tipo in &tipos {
+                for modalidade in &modalidades {
+                    registrar_log(&app_clone, &mut logs, format!("[{}] 🔄 [{}/{}] Processando {} para {} em {}...", timestamp_atual(), passo_atual, total_combinacoes, tipo, modalidade, alvo.cidade));
 
-                last_target_url = target_url.clone();
+                    let (items, target_url) = raspar_olx(
+                        &app_clone,
+                        &alvo.estado,
+                        &alvo.cidade,
+                        tipo,
+                        modalidade,
+                        &mut logs
+                    ).await;
 
-                let mut config_especifico = active_config.clone();
-                config_especifico.estado = alvo.estado.clone();
-                config_especifico.cidade = alvo.cidade.clone();
-                config_especifico.tipo = tipo.to_string();
-                config_especifico.modalidade = modalidade.to_string();
+                    _last_target_url = target_url.clone();
 
-                if let Ok(res) = enviar_para_servidor(&app, &config_especifico, items, target_url, logs.clone()).await {
-                    total_acumulado += res.total_encontrados;
-                    novos_acumulado += res.novos_encontrados;
-                    removidos_acumulado += res.removidos_encontrados;
-                    last_batch_id = res.batch_id;
+                    let mut config_especifico = active_config.clone();
+                    config_especifico.estado = alvo.estado.clone();
+                    config_especifico.cidade = alvo.cidade.clone();
+                    config_especifico.tipo = tipo.to_string();
+                    config_especifico.modalidade = modalidade.to_string();
+
+                    if let Ok(res) = enviar_para_servidor(&app_clone, &config_especifico, items, target_url, logs.clone()).await {
+                        _total_acumulado += res.total_encontrados;
+                        novos_acumulado += res.novos_encontrados;
+                        removidos_acumulado += res.removidos_encontrados;
+                        _last_batch_id = res.batch_id;
+                    }
+                    
+                    // Intervalo de segurança amigável para evitar rate-limit da Cloudflare
+                    if passo_atual < total_combinacoes {
+                        let delay_secs = 5 + (passo_atual % 4); // Alterna entre 5 e 8 segundos
+                        registrar_log(&app_clone, &mut logs, format!("[{}] ⏳ Aguardando {}s para a próxima consulta (respeitando limites da OLX)...", timestamp_atual(), delay_secs));
+                        tokio::time::sleep(std::time::Duration::from_secs(delay_secs as u64)).await;
+                    }
+
+                    passo_atual += 1;
                 }
-                
-                // Intervalo de segurança amigável para evitar rate-limit da Cloudflare
-                if passo_atual < total_combinacoes {
-                    let delay_secs = 5 + (passo_atual % 4); // Alterna entre 5 e 8 segundos
-                    registrar_log(&app, &mut logs, format!("[{}] ⏳ Aguardando {}s para a próxima consulta (respeitando limites da OLX)...", timestamp_atual(), delay_secs));
-                    tokio::time::sleep(std::time::Duration::from_secs(delay_secs as u64)).await;
-                }
-
-                passo_atual += 1;
             }
         }
-    }
 
-    registrar_log(&app, &mut logs, format!("[{}] 🎉 Varredura completa finalizada!", timestamp_atual()));
+        registrar_log(&app_clone, &mut logs, format!("[{}] 🎉 Varredura completa finalizada! {} novos imóveis descobertos, {} removidos.", timestamp_atual(), novos_acumulado, removidos_acumulado));
+    });
 
     Ok(SyncResult {
         success: true,
-        batch_id: last_batch_id,
-        target_url: last_target_url,
-        total_encontrados: total_acumulado,
-        novos_encontrados: novos_acumulado,
-        removidos_encontrados: removidos_acumulado,
-        logs,
-        message: format!("Prospecção concluída para {} cidades e todas as combinações!", cidades_para_raspar.len()),
+        batch_id: "iniciado".to_string(),
+        target_url: "".to_string(),
+        total_encontrados: 0,
+        novos_encontrados: 0,
+        removidos_encontrados: 0,
+        logs: vec![],
+        message: "Varredura iniciada em segundo plano".to_string(),
     })
 }
 

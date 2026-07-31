@@ -203,6 +203,7 @@ export function App() {
             }
             if (event.payload.includes("Varredura completa finalizada!")) {
               setProgresso(null);
+              setExecutando(false);
             }
           });
           if (isMounted) {
@@ -318,8 +319,11 @@ export function App() {
     } catch (err: any) {
       adicionarLog(`❌ Erro de execução: ${typeof err === 'object' ? JSON.stringify(err) : String(err)}`);
     } finally {
-      setExecutando(false);
-      setProgresso(null);
+      const isTauriEnv = typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__);
+      if (!isTauriEnv) {
+        setExecutando(false);
+        setProgresso(null);
+      }
     }
   };
 
