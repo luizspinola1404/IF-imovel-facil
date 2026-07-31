@@ -388,7 +388,19 @@ export function App() {
                 <div className="flex gap-2">
                   <select
                     value={config.cidade}
-                    onChange={(e) => setConfig({ ...config, cidade: e.target.value })}
+                    onChange={(e) => {
+                      const novaCidadeNome = e.target.value;
+                      const lista = config.cidades_alvo || [];
+                      const jaExiste = lista.some(
+                        (c) => c.cidade.toLowerCase() === novaCidadeNome.toLowerCase() && c.estado === config.estado
+                      );
+                      const novaLista = jaExiste
+                        ? lista
+                        : [...lista, { estado: config.estado, cidade: novaCidadeNome }];
+                      const novaConfig = { ...config, cidade: novaCidadeNome, cidades_alvo: novaLista };
+                      setConfig(novaConfig);
+                      sincronizarConfigComServidor(novaConfig);
+                    }}
                     disabled={carregandoCidades}
                     className="h-10 flex-1 bg-white border border-slate-300 rounded-lg px-3 text-sm text-slate-800 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 disabled:bg-slate-100 min-w-0 font-medium shadow-sm"
                   >
