@@ -61,6 +61,15 @@ fn construir_url_olx(estado: &str, cidade: &str, tipo: &str, modalidade: &str) -
     format!("{}?{}", url_base, query_params.join("&"))
 }
 
+fn preparar_url_com_particular(url: &str) -> String {
+    if !url.contains("f=p") {
+        let sep = if url.contains('?') { "&" } else { "?" };
+        format!("{}{}", url, sep) + "f=p"
+    } else {
+        url.to_string()
+    }
+}
+
 fn gerar_id(titulo: &str, link: &str) -> String {
     let raw = format!("{}{}", titulo, link);
     let mut hash: i32 = 0;
@@ -75,6 +84,7 @@ fn gerar_id(titulo: &str, link: &str) -> String {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Parse CLI Arguments
     let args: Vec<String> = std::env::args().collect();
+    let mut custom_url = String::new();
     let mut cidade = String::new();
     let mut estado = String::new();
     let mut tipo = String::new();
@@ -83,6 +93,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--url" => {
+                if i + 1 < args.len() {
+                    custom_url = args[i + 1].clone();
+                    i += 2;
+                } else { i += 1; }
+            }
             "--cidade" => {
                 if i + 1 < args.len() {
                     cidade = args[i + 1].clone();
@@ -111,10 +127,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    if estado.is_empty() || tipo.is_empty() || modalidade.is_empty() {
-        eprintln!("Erro: argumentos faltando. Uso: scraper --cidade <cidade> --estado <estado> --tipo <tipo> --modalidade <modalidade>");
+    let target_url = if !custom_url.is_empty() {
+        preparar_url_com_particular(&custom_url)
+    } else if !estado.is_empty() && !tipo.is_empty() && !modalidade.is_empty() {
+        construir_url_olx(&estado, &cidade, &tipo, &modalidade)
+    } else {
+        eprintln!("Erro: Forneça --url <url> ou --cidade <cidade> --estado <estado> --tipo <tipo> --modalidade <modalidade>");
         std::process::exit(1);
-    }
+    };
 
     // 2. Inicia o Geckodriver em segundo plano em uma porta dinâmica
     let pid = std::process::id();
@@ -170,10 +190,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = tx.send(());
     });
 
-    // 5. Executa a raspagem nativa na OLX com filtro de cidade e proprietário direto
+    // 5. Executa a raspagem nativa da URL OLX com f=p e navegação paginada
     let res = tokio::select! {
         r = async {
-            let target_url = construir_url_olx(&estado, &cidade, &tipo, &modalidade);
             let mut results: Vec<SearchResult> = Vec::new();
             let mut seen_links = std::collections::HashSet::new();
 
@@ -200,7 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for page in 1..=total_pages {
                     if page > 1 {
                         let sep = if target_url.contains('?') { "&" } else { "?" };
-                        let page_url = format!("{}&o={}", target_url, page);
+                        let page_url = format!("{}{}&o={}", target_url, sep, page);
                         if driver.goto(&page_url).await.is_err() {
                             break;
                         }
@@ -215,13 +234,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         seen_links.insert(href.clone());
                                         let title = a.text().await.unwrap_or_default();
                                         let clean_title = if title.trim().is_empty() {
-                                            format!("Imóvel Direto com Proprietário em {}", cidade)
+                                            format!("Imóvel Direto com Proprietário em {}", se_nao_vazio(&cidade, "Região"))
                                         } else {
                                             title.trim().to_string()
                                         };
 
                                         let id = gerar_id(&clean_title, &href);
-                                        let trecho = format!("Imóvel particular em {}-{}. Anúncio direto de proprietário na OLX.", cidade, estado);
+                                        let trecho = format!("Imóvel particular anunciado na OLX. Anúncio direto de proprietário.");
 
                                         results.push(SearchResult {
                                             id,
@@ -267,4 +286,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn se_nao_vazio<'a>(val: &'a str, padrao: &'a str) -> &'a str {
+    if val.trim().is_empty() { padrao } else { val }
 }

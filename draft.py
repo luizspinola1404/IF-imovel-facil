@@ -47,20 +47,25 @@ def construir_url_olx(estado: str, tipo_imovel: str, modalidade: str = "venda", 
     return url
 
 
-def raspar_imoveis_olx(estado: str, tipo_imovel: str, modalidade: str = "venda", apenas_particular: bool = True, driver=None) -> list[str]:
+def raspar_links_de_url_olx(url: str, driver=None) -> list[str]:
     """
-    Recebe o estado (ex: 'ES', 'SP', 'MG') e o tipo de imóvel (ex: 'casa', 'apartamento', 'terreno')
-    e retorna uma lista contendo todos os links dos imóveis encontrados.
+    Recebe qualquer URL da OLX (ex: URL regional obtida na busca),
+    garante que o parâmetro ?f=p (particular) esteja presente,
+    percorre todas as páginas e extrai a lista completa de links de imóveis.
     """
-    url_base = construir_url_olx(estado, tipo_imovel, modalidade, apenas_particular)
-    print(f"URL Alvo: {url_base}")
+    # 1. Garante o parâmetro f=p na URL para filtrar anúncios de particulares
+    if "f=p" not in url:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}f=p"
+
+    print(f"URL Alvo com Filtro Particular (f=p): {url}")
     
     should_close_driver = False
     if driver is None:
         driver = webdriver.Chrome()
         should_close_driver = True
 
-    driver.get(url_base)
+    driver.get(url)
     time.sleep(3)
     
     soup_inicial = BeautifulSoup(driver.page_source, 'html.parser')
@@ -72,16 +77,16 @@ def raspar_imoveis_olx(estado: str, tipo_imovel: str, modalidade: str = "venda",
         total_imoveis = int(match.group(1))
     
     total_paginas = math.ceil(total_imoveis / 50) if total_imoveis > 0 else 1
-    print(f"Encontrados {total_imoveis} imóveis ({total_paginas} páginas) para {tipo_imovel} em {estado.upper()}.")
+    print(f"Encontrados {total_imoveis} imóveis particulares ({total_paginas} páginas).")
     
     todos_os_links = []
     
     for pagina in range(1, total_paginas + 1):
         if pagina == 1:
-            url_pagina = url_base
+            url_pagina = url
         else:
-            sep = "&" if "?" in url_base else "?"
-            url_pagina = f"{url_base}{sep}o={pagina}"
+            sep = "&" if "?" in url else "?"
+            url_pagina = f"{url}{sep}o={pagina}"
             
         print(f"Raspando página {pagina}/{total_paginas}: {url_pagina}")
         if pagina > 1:
@@ -104,14 +109,20 @@ def raspar_imoveis_olx(estado: str, tipo_imovel: str, modalidade: str = "venda",
     return todos_os_links
 
 
-if __name__ == "__main__":
-    # Exemplo de chamada da função:
-    estado_desejado = "ES"
-    tipo_desejado = "casa"
-    
-    links = raspar_imoveis_olx(estado=estado_desejado, tipo_imovel=tipo_desejado, modalidade="venda")
+def raspar_imoveis_olx(estado: str, tipo_imovel: str, modalidade: str = "venda", apenas_particular: bool = True, driver=None) -> list[str]:
+    """
+    Recebe estado e tipo de imóvel, gera a URL base e raspa todos os links.
+    """
+    url_base = construir_url_olx(estado, tipo_imovel, modalidade, apenas_particular)
+    return raspar_links_de_url_olx(url_base, driver=driver)
 
+
+if __name__ == "__main__":
+    # Exemplo com a URL capturada nas suas imagens (Região de Colatina e Nova Venécia - ES):
+    url_regiao = "https://www.olx.com.br/imoveis/venda/estado-es/norte-do-espirito-santo/regiao-de-colatina-e-nova-venecia"
     
+    links = raspar_links_de_url_olx(url=url_regiao)
+
     print("\n==========================================")
     print(f"TOTAL DE LINKS EXTRAÍDOS: {len(links)}")
     print("==========================================")
