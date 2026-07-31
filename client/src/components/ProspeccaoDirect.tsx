@@ -1,14 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -21,15 +13,7 @@ import {
   Sparkles,
   AlertTriangle,
   RefreshCw,
-  Search,
 } from "lucide-react";
-
-const ESTADOS_BR = [
-  "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
-  "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
-];
-
-const TIPOS = ["Casa", "Apartamento", "Terreno", "Comercial"];
 
 interface ScraperResult {
   id: string;
@@ -50,67 +34,18 @@ interface ScraperResult {
 
 export function ProspeccaoDirect() {
   const { toast } = useToast();
-  const [estado, setEstado] = useState("todos");
-  const [cidade, setCidade] = useState("todas");
-  const [tipo, setTipo] = useState("todos");
-  const [modalidade, setModalidade] = useState("todas");
-  const [statusFiltro, setStatusFiltro] = useState("todos");
-
   const [resultados, setResultados] = useState<ScraperResult[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [leadsSalvosIds, setLeadsSalvosIds] = useState<Set<string>>(new Set());
   const [filtroTexto, setFiltroTexto] = useState("");
 
-  // Dynamic cities states
-  const [cidades, setCidades] = useState<{ id: number; nome: string }[]>([]);
-  const [loadingCidades, setLoadingCidades] = useState(false);
-
-  // Fetch cities when estado changes
-  useEffect(() => {
-    if (!estado || estado === "todos") {
-      setCidades([]);
-      setCidade("todas");
-      return;
-    }
-
-    const fetchCidades = async () => {
-      setLoadingCidades(true);
-      try {
-        const res = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${estado}/municipios`);
-        if (!res.ok) throw new Error("Erro ao carregar cidades");
-        const data = await res.json();
-        const sorted = data.sort((a: any, b: any) => {
-          const nameA = a?.nome ?? "";
-          const nameB = b?.nome ?? "";
-          return nameA.localeCompare(nameB);
-        });
-        setCidades(sorted);
-      } catch (err) {
-        console.error(err);
-        setCidades([]);
-      } finally {
-        setLoadingCidades(false);
-      }
-    };
-
-    fetchCidades();
-  }, [estado]);
-
   const carregarLeadsSincronizados = async () => {
     setCarregando(true);
     try {
-      let queryParams = [];
-      if (estado && estado !== "todos") queryParams.push(`estado=${encodeURIComponent(estado)}`);
-      if (cidade && cidade !== "todas") queryParams.push(`cidade=${encodeURIComponent(cidade)}`);
-      if (tipo && tipo !== "todos") queryParams.push(`tipo=${encodeURIComponent(tipo)}`);
-      if (modalidade && modalidade !== "todas") queryParams.push(`modalidade=${encodeURIComponent(modalidade)}`);
-      if (statusFiltro && statusFiltro !== "todos") queryParams.push(`status=${encodeURIComponent(statusFiltro)}`);
-
-      const queryString = queryParams.length > 0 ? `?${queryParams.join("&")}` : "";
-      const res = await fetch(`/api/prospeccao/leads${queryString}`);
+      const res = await fetch("/api/prospeccao/leads");
       if (!res.ok) {
-        throw new Error("Erro ao carregar leads sincronizados");
+        throw new Error("Erro ao carregar imóveis prospectados");
       }
 
       const data: ScraperResult[] = await res.json();
@@ -127,10 +62,9 @@ export function ProspeccaoDirect() {
     }
   };
 
-  // Executa o carregamento automático na montagem inicial e ao alterar filtros
   useEffect(() => {
     carregarLeadsSincronizados();
-  }, [estado, cidade, tipo, modalidade, statusFiltro]);
+  }, []);
 
   const handleSalvarLead = async (resultado: ScraperResult) => {
     setSalvandoId(resultado.id);
@@ -183,9 +117,9 @@ export function ProspeccaoDirect() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold">Imóveis Prospectados (Sincronização Desktop)</h2>
+          <h2 className="text-xl font-bold">Imóveis Prospectados</h2>
           <p className="text-sm text-muted-foreground">
-            Todos os imóveis de proprietários particulares capturados e atualizados via Agente Desktop.
+            Lista completa de todos os imóveis de proprietários particulares sincronizados pelo Agente Desktop.
           </p>
         </div>
 
@@ -199,97 +133,6 @@ export function ProspeccaoDirect() {
           <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
           Atualizar Lista
         </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border">
-        <div className="space-y-2">
-          <Label htmlFor="estado">Estado</Label>
-          <Select value={estado} onValueChange={setEstado}>
-            <SelectTrigger id="estado">
-              <SelectValue placeholder="Todos os Estados" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os Estados</SelectItem>
-              {ESTADOS_BR.map((uf) => (
-                <SelectItem key={uf} value={uf}>{uf}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="cidade">Cidade</Label>
-          {loadingCidades ? (
-            <div className="flex items-center h-10 border rounded-md px-3 bg-white text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
-              Buscando cidades...
-            </div>
-          ) : cidades.length > 0 ? (
-            <Select value={cidade} onValueChange={setCidade}>
-              <SelectTrigger id="cidade">
-                <SelectValue placeholder="Todas as Cidades" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[300px] overflow-y-auto">
-                <SelectItem value="todas">Todas as Cidades</SelectItem>
-                {cidades.map((c) => (
-                  <SelectItem key={c.id} value={c.nome}>
-                    {c.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              id="cidade"
-              placeholder="Todas as cidades"
-              value={cidade === "todas" ? "" : cidade}
-              onChange={(e) => setCidade(e.target.value || "todas")}
-            />
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="tipo">Tipo de Imóvel</Label>
-          <Select value={tipo} onValueChange={setTipo}>
-            <SelectTrigger id="tipo">
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os Tipos</SelectItem>
-              {TIPOS.map((t) => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="modalidade">Modalidade</Label>
-          <Select value={modalidade} onValueChange={setModalidade}>
-            <SelectTrigger id="modalidade">
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas as Modalidades</SelectItem>
-              <SelectItem value="venda">Venda</SelectItem>
-              <SelectItem value="aluguel">Aluguel</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="statusFiltro">Status na Plataforma</Label>
-          <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-            <SelectTrigger id="statusFiltro">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os Status</SelectItem>
-              <SelectItem value="active">Imóveis Ativos</SelectItem>
-              <SelectItem value="removed">Removidos da OLX</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       {carregando && (
@@ -324,7 +167,7 @@ export function ProspeccaoDirect() {
             <div className="relative w-full sm:w-64">
               <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Filtrar imóveis..."
+                placeholder="Filtrar por texto..."
                 value={filtroTexto}
                 onChange={(e) => setFiltroTexto(e.target.value)}
                 className="pl-8 h-8 text-xs bg-slate-50"
@@ -422,7 +265,7 @@ export function ProspeccaoDirect() {
             Nenhum imóvel prospectado sincronizado no momento
           </p>
           <p className="text-xs text-center max-w-xs">
-            Execute o Agente Desktop no seu computador para rastrear e enviar imóveis capturados para este painel.
+            Execute o Agente Desktop no seu computador para enviar imóveis capturados para este painel.
           </p>
         </div>
       )}

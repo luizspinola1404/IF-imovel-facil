@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, pool } from "../db";
 import { prospeccaoBatches, prospeccaoLeads, ProspeccaoLead } from "@shared/schema";
 import { eq, and, ne, desc } from "drizzle-orm";
 
@@ -29,6 +29,49 @@ export interface BuscaParams {
   status?: string;
 }
 
+let tablesChecked = false;
+async function ensureTablesExist() {
+  if (tablesChecked) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS prospeccao_batches (
+        id SERIAL PRIMARY KEY,
+        batch_id TEXT NOT NULL,
+        fonte TEXT NOT NULL DEFAULT 'olx.com.br',
+        estado TEXT NOT NULL,
+        cidade TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        modalidade TEXT NOT NULL,
+        total_encontrados INTEGER NOT NULL DEFAULT 0,
+        novos_encontrados INTEGER NOT NULL DEFAULT 0,
+        removidos_encontrados INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS prospeccao_leads (
+        id TEXT PRIMARY KEY,
+        titulo TEXT NOT NULL,
+        link TEXT NOT NULL,
+        fonte TEXT NOT NULL DEFAULT 'olx.com.br (Particular)',
+        trecho TEXT,
+        direto_proprietario BOOLEAN NOT NULL DEFAULT TRUE,
+        cidade TEXT NOT NULL,
+        estado TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        modalidade TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        is_new BOOLEAN NOT NULL DEFAULT TRUE,
+        first_seen_at TIMESTAMP DEFAULT NOW(),
+        last_seen_at TIMESTAMP DEFAULT NOW(),
+        last_batch_id TEXT
+      );
+    `);
+    tablesChecked = true;
+  } catch (err) {
+    console.error("Erro ao verificar/criar tabelas de prospecção:", err);
+  }
+}
+
 function gerarId(titulo: string, link: string): string {
   const raw = `${titulo}${link}`;
   let hash = 0;
@@ -45,6 +88,8 @@ function gerarId(titulo: string, link: string): string {
  * Classifica automaticamente em NOVOS, MANTIDOS e REMOVIDOS.
  */
 export async function sincronizarLoteProspeccao(payload: SyncBatchRequest) {
+  await ensureTablesExist();
+
   const {
     batchId = `batch-${Date.now()}`,
     fonte = "olx.com.br",
@@ -165,36 +210,42 @@ export async function sincronizarLoteProspeccao(payload: SyncBatchRequest) {
  * Parâmetros opcionais: se nenhum for passado, exibe TODOS os imóveis prospectados.
  */
 export async function listarLeadsProspeccao(params?: Partial<BuscaParams>): Promise<ProspeccaoLead[]> {
-  const { estado, cidade, tipo, modalidade, status } = params || {};
+  await ensureTablesExist();
 
-  const conditions = [];
+  try {
+    const { estado, cidade, tipo, modalidade, status } = params || {};
+    const conditions = [];
 
-  if (estado && estado.trim()) {
-    conditions.push(eq(prospeccaoLeads.estado, estado.trim().toUpperCase()));
-  }
-  if (cidade && cidade.trim()) {
-    conditions.push(eq(prospeccaoLeads.cidade, cidade.trim()));
-  }
-  if (tipo && tipo.trim() && tipo.trim().toLowerCase() !== "todos") {
-    conditions.push(eq(prospeccaoLeads.tipo, tipo.trim()));
-  }
-  if (modalidade && modalidade.trim() && modalidade.trim().toLowerCase() !== "todos") {
-    conditions.push(eq(prospeccaoLeads.modalidade, modalidade.trim().toLowerCase()));
-  }
-  if (status && status.trim() && status.trim().toLowerCase() !== "todos") {
-    conditions.push(eq(prospeccaoLeads.status, status.trim()));
-  }
+    if (estado && estado.trim() && estado.trim().toLowerCase() !== "todos") {
+      conditions.push(eq(prospeccaoLeads.estado, estado.trim().toUpperCase()));
+    }
+    if (cidade && cidade.trim() && cidade.trim().toLowerCase() !== "todas") {
+      conditions.push(eq(prospeccaoLeads.cidade, cidade.trim()));
+    }
+    if (tipo && tipo.trim() && tipo.trim().toLowerCase() !== "todos") {
+      conditions.push(eq(prospeccaoLeads.tipo, tipo.trim()));
+    }
+    if (modalidade && modalidade.trim() && modalidade.trim().toLowerCase() !== "todas") {
+      conditions.push(eq(prospeccaoLeads.modalidade, modalidade.trim().toLowerCase()));
+    }
+    if (status && status.trim() && status.trim().toLowerCase() !== "todos") {
+      conditions.push(eq(prospeccaoLeads.status, status.trim()));
+    }
 
-  if (conditions.length > 0) {
+    if (conditions.length > 0) {
+      return await db
+        .select()
+        .from(prospeccaoLeads)
+        .where(and(...conditions))
+        .orderBy(desc(prospeccaoLeads.isNew), desc(prospeccaoLeads.lastSeenAt));
+    }
+
     return await db
       .select()
       .from(prospeccaoLeads)
-      .where(and(...conditions))
       .orderBy(desc(prospeccaoLeads.isNew), desc(prospeccaoLeads.lastSeenAt));
+  } catch (err) {
+    console.error("Erro ao consultar prospeccao_leads:", err);
+    return [];
   }
-
-  return await db
-    .select()
-    .from(prospeccaoLeads)
-    .orderBy(desc(prospeccaoLeads.isNew), desc(prospeccaoLeads.lastSeenAt));
 }
