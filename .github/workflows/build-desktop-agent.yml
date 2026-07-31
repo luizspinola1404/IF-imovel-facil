@@ -2,12 +2,6 @@ name: Build Agente Desktop Windows (.exe)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'desktop-agent/**'
-      - '.github/workflows/build-desktop-agent.yml'
 
 jobs:
   build-windows-exe:
