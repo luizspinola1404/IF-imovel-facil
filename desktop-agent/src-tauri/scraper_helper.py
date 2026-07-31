@@ -91,7 +91,7 @@ def raspar_links_de_url_olx(url: str, cidade: str = "", estado: str = "") -> lis
             total_imoveis = 0
 
     total_paginas = math.ceil(total_imoveis / 50) if total_imoveis > 0 else 1
-    max_paginas = max(total_paginas, 10) if total_imoveis == 0 else min(total_paginas, 25)
+    max_paginas = 1 if total_imoveis == 0 else min(total_paginas, 3)
 
     todos_os_items = []
     seen = set()
@@ -120,7 +120,7 @@ def raspar_links_de_url_olx(url: str, cidade: str = "", estado: str = "") -> lis
                 slug = link.split('/')[-1]
                 titulo_raw = slug.rsplit('-', 1)[0].replace('-', ' ').title()
                 todos_os_items.append({
-                    "id": f"olx-{len(todos_os_items)+1}",
+                    "id": f"olx-{slug}" if slug else f"olx-{abs(hash(link))}",
                     "titulo": titulo_raw or f"Imóvel Particular em {cidade}-{estado}",
                     "link": link,
                     "fonte": "OLX Brasil (Particular)",
@@ -128,7 +128,8 @@ def raspar_links_de_url_olx(url: str, cidade: str = "", estado: str = "") -> lis
                     "direto_proprietario": True
                 })
 
-        if novos_na_pagina == 0 and pagina > 1:
+        # Se não encontrou novos imóveis nesta página, interrompe o loop imediatamente
+        if novos_na_pagina == 0:
             break
 
     return todos_os_items

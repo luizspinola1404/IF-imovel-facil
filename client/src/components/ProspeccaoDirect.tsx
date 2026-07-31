@@ -47,6 +47,8 @@ export function ProspeccaoDirect() {
   const [marcandoId, setMarcandoId] = useState<string | null>(null);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [filtroTexto, setFiltroTexto] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("Todos");
+  const [filtroModalidade, setFiltroModalidade] = useState("Todos");
 
   const carregarLeadsSincronizados = async () => {
     setCarregando(true);
@@ -173,6 +175,9 @@ export function ProspeccaoDirect() {
   };
 
   const resultadosFiltrados = resultados.filter((r) => {
+    if (filtroTipo !== "Todos" && r.tipo?.toLowerCase() !== filtroTipo.toLowerCase()) return false;
+    if (filtroModalidade !== "Todos" && r.modalidade?.toLowerCase() !== filtroModalidade.toLowerCase()) return false;
+    
     if (!filtroTexto.trim()) return true;
     const query = filtroTexto.toLowerCase();
     return (
@@ -184,14 +189,19 @@ export function ProspeccaoDirect() {
     );
   });
 
-  const leadsPorGrupo = resultadosFiltrados.reduce((acc, lead) => {
-    const fonte = lead.fonte || "OLX Brasil (Particular)";
+  // Agrupamento Hierárquico: Cidade -> Tipo -> Modalidade
+  const leadsAgrupados = resultadosFiltrados.reduce((acc, lead) => {
     const local = lead.cidade && lead.estado ? `${lead.cidade}-${lead.estado}` : "Geral";
-    const grupoKey = `${fonte} — ${local}`;
-    if (!acc[grupoKey]) acc[grupoKey] = [];
-    acc[grupoKey].push(lead);
+    const tipo = lead.tipo ? (lead.tipo.charAt(0).toUpperCase() + lead.tipo.slice(1)) : "Imóvel";
+    const modalidade = lead.modalidade ? (lead.modalidade.charAt(0).toUpperCase() + lead.modalidade.slice(1)) : "Venda";
+
+    if (!acc[local]) acc[local] = {};
+    if (!acc[local][tipo]) acc[local][tipo] = {};
+    if (!acc[local][tipo][modalidade]) acc[local][tipo][modalidade] = [];
+    
+    acc[local][tipo][modalidade].push(lead);
     return acc;
-  }, {} as Record<string, ScraperResult[]>);
+  }, {} as Record<string, Record<string, Record<string, ScraperResult[]>>>);
 
   const countNovos = resultados.filter((r) => r.isNew).length;
   const countRemovidos = resultados.filter((r) => r.status === "removed").length;
@@ -283,147 +293,212 @@ export function ProspeccaoDirect() {
               )}
             </div>
 
-            <div className="relative w-full sm:w-64">
-              <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Filtrar por texto..."
-                value={filtroTexto}
-                onChange={(e) => setFiltroTexto(e.target.value)}
-                className="pl-8 h-8 text-xs bg-slate-50"
-              />
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-48">
+                <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Filtrar por texto..."
+                  value={filtroTexto}
+                  onChange={(e) => setFiltroTexto(e.target.value)}
+                  className="pl-8 h-8 text-xs bg-slate-50"
+                />
+              </div>
+              <select
+                value={filtroTipo}
+                onChange={(e) => setFiltroTipo(e.target.value)}
+                className="h-8 text-xs bg-slate-50 border border-slate-200 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-slate-300"
+              >
+                <option value="Todos">Todos os Tipos</option>
+                <option value="Casa">Casa</option>
+                <option value="Apartamento">Apartamento</option>
+                <option value="Terreno">Terreno</option>
+                <option value="Comercial">Comercial</option>
+              </select>
+              <select
+                value={filtroModalidade}
+                onChange={(e) => setFiltroModalidade(e.target.value)}
+                className="h-8 text-xs bg-slate-50 border border-slate-200 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-slate-300"
+              >
+                <option value="Todos">Todas Modalidades</option>
+                <option value="Venda">Venda</option>
+                <option value="Aluguel">Aluguel</option>
+              </select>
             </div>
           </div>
 
           <Accordion
             type="multiple"
-            defaultValue={Object.keys(leadsPorGrupo)}
+            defaultValue={Object.keys(leadsAgrupados)}
             className="space-y-4"
           >
-            {Object.entries(leadsPorGrupo).map(([grupoNome, leadsDoGrupo]) => (
-              <AccordionItem
-                key={grupoNome}
-                value={grupoNome}
-                className="bg-white border rounded-xl shadow-sm px-4 overflow-hidden border-slate-200"
-              >
-                <AccordionTrigger className="hover:no-underline py-3.5">
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                      📍 {grupoNome}
-                    </span>
-                    <Badge variant="secondary" className="bg-slate-100 text-slate-700 font-mono text-xs">
-                      {leadsDoGrupo.length} imóveis
-                    </Badge>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pt-2 pb-4">
-                  <div className="grid gap-3">
-                    {leadsDoGrupo.map((resultado, idx) => (
-                      <div key={resultado.id} className="bg-slate-50/70 border rounded-lg p-4 hover:shadow-sm transition-shadow">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="text-xs font-bold text-slate-400 font-mono w-6">
-                              #{idx + 1}
+            {Object.entries(leadsAgrupados).map(([cidade, tiposObj]) => {
+              // Calcular total de imóveis nesta cidade para a badge
+              let totalCidade = 0;
+              Object.values(tiposObj).forEach(modalidadesObj => {
+                Object.values(modalidadesObj).forEach(leads => {
+                  totalCidade += leads.length;
+                });
+              });
+
+              return (
+                <AccordionItem
+                  key={cidade}
+                  value={cidade}
+                  className="bg-white border rounded-xl shadow-sm px-4 overflow-hidden border-slate-200"
+                >
+                  <AccordionTrigger className="hover:no-underline py-3.5">
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                        📍 {cidade}
+                      </span>
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700 font-mono text-xs">
+                        {totalCidade} imóveis
+                      </Badge>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-2 pb-4">
+                    
+                    <Accordion type="multiple" defaultValue={Object.keys(tiposObj)} className="space-y-3 pl-2">
+                      {Object.entries(tiposObj).map(([tipo, modalidadesObj]) => (
+                        <AccordionItem
+                          key={tipo}
+                          value={tipo}
+                          className="bg-slate-50/50 border rounded-lg px-4 overflow-hidden border-slate-200"
+                        >
+                          <AccordionTrigger className="hover:no-underline py-2.5">
+                            <span className="font-semibold text-sm text-slate-700 flex items-center gap-2">
+                              🏠 {tipo}
                             </span>
+                          </AccordionTrigger>
+                          <AccordionContent className="pt-2 pb-4 border-t border-slate-100">
+                            
+                            {Object.entries(modalidadesObj).map(([modalidade, leads]) => (
+                              <div key={modalidade} className="mb-6 last:mb-0">
+                                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-3 ml-1 flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                                  {modalidade} ({leads.length})
+                                </h4>
+                                <div className="grid gap-3">
+                                  {leads.map((resultado, idx) => (
+                                    <div key={resultado.id} className="bg-white border rounded-lg p-4 hover:shadow-sm transition-shadow">
+                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                          <span className="text-xs font-bold text-slate-400 font-mono w-6">
+                                            #{idx + 1}
+                                          </span>
 
-                            <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-bold uppercase bg-white">
-                              {resultado.cidade}-{resultado.estado}
-                            </Badge>
+                                          {resultado.isNew && (
+                                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 text-[10px] px-2 py-0.5 animate-pulse">
+                                              ⭐ NOVO
+                                            </Badge>
+                                          )}
 
-                            {resultado.isNew && (
-                              <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-0 text-[10px] px-2 py-0.5 animate-pulse">
-                                ⭐ NOVO
-                              </Badge>
-                            )}
+                                          {resultado.status === "tentou_converter" ? (
+                                            <Badge className="bg-purple-600 hover:bg-purple-700 text-white border-0 text-[10px] px-2 py-0.5 flex items-center gap-1">
+                                              🎯 TENTATIVA DE CONVERSÃO
+                                            </Badge>
+                                          ) : resultado.status === "removed" ? (
+                                            <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
+                                              ❌ REMOVIDO DA OLX
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="secondary" className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
+                                              ATIVO
+                                            </Badge>
+                                          )}
 
-                            {resultado.status === "tentou_converter" ? (
-                              <Badge className="bg-purple-600 hover:bg-purple-700 text-white border-0 text-[10px] px-2 py-0.5 flex items-center gap-1">
-                                🎯 TENTATIVA DE CONVERSÃO
-                              </Badge>
-                            ) : resultado.status === "removed" ? (
-                              <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
-                                ❌ REMOVIDO DA OLX
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
-                                ATIVO
-                              </Badge>
-                            )}
+                                           <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] px-2 py-0.5 font-bold uppercase">
+                                             {resultado.modalidade || "venda"}
+                                           </Badge>
 
-                            <h4 className="font-semibold text-sm text-slate-800 truncate">
-                              {resultado.titulo}
-                            </h4>
-                          </div>
+                                           <Badge className="bg-indigo-100 text-indigo-900 border-indigo-300 text-[10px] px-2 py-0.5 font-bold uppercase">
+                                             {resultado.tipo || "imovel"}
+                                           </Badge>
 
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={resultado.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-primary inline-flex items-center gap-1 hover:underline font-medium bg-white px-2.5 py-1 rounded border"
-                            >
-                              Abrir Anúncio na OLX
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
+                                          <h4 className="font-semibold text-sm text-slate-800 truncate">
+                                            {resultado.titulo}
+                                          </h4>
+                                        </div>
 
-                            <Button
-                              size="sm"
-                              variant={resultado.status === "tentou_converter" ? "secondary" : "outline"}
-                              disabled={marcandoId === resultado.id}
-                              onClick={() => handleMarcarConversao(resultado.id, resultado.status)}
-                              className={`h-7 text-xs gap-1 font-medium transition-colors ${
-                                resultado.status === "tentou_converter"
-                                  ? "bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200"
-                                  : "text-slate-700 hover:bg-slate-100 border-slate-300 bg-white"
-                              }`}
-                            >
-                              {marcandoId === resultado.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : resultado.status === "tentou_converter" ? (
-                                <>
-                                  <Target className="h-3 w-3 text-purple-600" />
-                                  <span>Tentou Converter 🎯</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Target className="h-3 w-3 text-slate-500" />
-                                  <span>Marcar Conversão</span>
-                                </>
-                              )}
-                            </Button>
+                                        <div className="flex items-center gap-2">
+                                          <a
+                                            href={resultado.link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-primary inline-flex items-center gap-1 hover:underline font-medium bg-slate-50 px-2.5 py-1 rounded border"
+                                          >
+                                            Abrir Anúncio na OLX
+                                            <ExternalLink className="h-3 w-3" />
+                                          </a>
 
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={excluindoId === resultado.id}
-                              onClick={() => handleExcluirLead(resultado.id)}
-                              className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                              title="Excluir imóvel da lista"
-                            >
-                              {excluindoId === resultado.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2 pl-8 line-clamp-2">
-                          {resultado.trecho}
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mt-2 pl-8">
-                          <span className="truncate max-w-md">{resultado.link}</span>
-                          {resultado.lastSeenAt && (
-                            <span className="shrink-0 text-slate-400">
-                              Atualizado em: {new Date(resultado.lastSeenAt).toLocaleDateString("pt-BR")}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
+                                          <Button
+                                            size="sm"
+                                            variant={resultado.status === "tentou_converter" ? "secondary" : "outline"}
+                                            disabled={marcandoId === resultado.id}
+                                            onClick={() => handleMarcarConversao(resultado.id, resultado.status)}
+                                            className={`h-7 text-xs gap-1 font-medium transition-colors ${
+                                              resultado.status === "tentou_converter"
+                                                ? "bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200"
+                                                : "text-slate-700 hover:bg-slate-100 border-slate-300 bg-white"
+                                            }`}
+                                          >
+                                            {marcandoId === resultado.id ? (
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : resultado.status === "tentou_converter" ? (
+                                              <>
+                                                <Target className="h-3 w-3 text-purple-600" />
+                                                <span>Tentou Converter 🎯</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Target className="h-3 w-3 text-slate-500" />
+                                                <span>Marcar Conversão</span>
+                                              </>
+                                            )}
+                                          </Button>
+
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={excluindoId === resultado.id}
+                                            onClick={() => handleExcluirLead(resultado.id)}
+                                            className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                            title="Excluir imóvel da lista"
+                                          >
+                                            {excluindoId === resultado.id ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                      <p className="text-xs text-muted-foreground mt-2 pl-8 line-clamp-2">
+                                        {resultado.trecho}
+                                      </p>
+                                      <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mt-2 pl-8">
+                                        <span className="truncate max-w-md">{resultado.link}</span>
+                                        {resultado.lastSeenAt && (
+                                          <span className="shrink-0 text-slate-400">
+                                            Atualizado em: {new Date(resultado.lastSeenAt).toLocaleDateString("pt-BR")}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
           </Accordion>
         </div>
       )}

@@ -313,6 +313,23 @@ export async function listarCidadesAlvoProspeccao(): Promise<{ estado: string; c
  */
 export async function salvarCidadesAlvoProspeccao(cidades: { estado: string; cidade: string }[]) {
   await ensureTablesExist();
+
+  // 1. Identificar quais cidades foram removidas da lista
+  const resExistentes = await pool.query("SELECT estado, cidade FROM prospeccao_cidades_alvo WHERE ativo = true");
+  const novasChaves = new Set(cidades.map(c => `${c.estado.toUpperCase().trim()}:${c.cidade.trim().toLowerCase()}`));
+
+  for (const row of resExistentes.rows) {
+    const key = `${row.estado.toUpperCase().trim()}:${row.cidade.trim().toLowerCase()}`;
+    if (!novasChaves.has(key)) {
+      console.log(`[PROSPECÇÃO] Cidade removida (${row.cidade}-${row.estado}). Excluindo imóveis associados...`);
+      await pool.query(
+        "DELETE FROM prospeccao_leads WHERE UPPER(estado) = $1 AND LOWER(cidade) = $2",
+        [row.estado.toUpperCase().trim(), row.cidade.trim().toLowerCase()]
+      );
+    }
+  }
+
+  // 2. Atualizar a lista de cidades alvo no servidor
   await pool.query("DELETE FROM prospeccao_cidades_alvo");
 
   for (const c of cidades) {
