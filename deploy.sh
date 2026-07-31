@@ -6,23 +6,10 @@ if [ -z "$1" ]; then
 fi
 MESSAGE="$1"
 
-echo "==> Compilando o scraper em Rust localmente..."
-(cd scraper && cargo build --release)
-
-if [ ! -f "scraper/target/release/scraper" ]; then
-  echo "Erro: Falha na compilação do binário do scraper."
-  exit 1
-fi
-
 echo "==> Enviando alterações para o repositório..."
-git add -f scraper/target/release/scraper
 git add .
 git commit -m "$MESSAGE" || true
 git push
-
-echo "==> Garantindo o binário pré-compilado via SCP no servidor remoto..."
-ssh root@187.77.43.72 "mkdir -p /srv/imovel-facil/scraper/target/release"
-scp scraper/target/release/scraper root@187.77.43.72:/srv/imovel-facil/scraper/target/release/scraper
 
 echo "==> Executando deploy automático no servidor remoto..."
 ssh root@187.77.43.72 <<'EOF'

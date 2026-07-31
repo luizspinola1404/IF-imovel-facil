@@ -1,3 +1,11 @@
+# Build scraper stage
+FROM rust:alpine AS scraper-builder
+WORKDIR /app
+RUN apk add --no-cache musl-dev
+COPY scraper ./scraper
+WORKDIR /app/scraper
+RUN cargo build --release
+
 # Build stage
 FROM node:20-alpine AS builder
 
@@ -39,8 +47,8 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=builder /app/shared ./shared
 
-# Copy the pre-compiled scraper binary directly
-COPY scraper/target/release/scraper ./scraper/target/release/scraper
+# Copy the compiled scraper binary
+COPY --from=scraper-builder /app/scraper/target/release/scraper ./scraper/target/release/scraper
 
 # Expose port
 EXPOSE 5000
