@@ -375,6 +375,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/desktop-agent/download", (_req, res) => {
+    const filePath = path.join(process.cwd(), "server", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe");
+    res.download(filePath, "IF-Prospeccao-Agent-Windows.exe", (err) => {
+      if (err && !res.headersSent) {
+        res.status(404).json({ error: "Executável do Agente Desktop não encontrado." });
+      }
+    });
+  });
+
   app.delete("/api/prospeccao/leads/:id", async (req, res) => {
     try {
       await excluirLeadProspeccao(req.params.id);

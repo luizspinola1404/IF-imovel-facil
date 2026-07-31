@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Trash2,
+  Download,
 } from "lucide-react";
 
 interface ScraperResult {
@@ -186,6 +187,20 @@ export function ProspeccaoDirect() {
         </div>
 
         <div className="flex items-center gap-2">
+          <a
+            href="/api/desktop-agent/download"
+            download="IF-Prospeccao-Agent-Windows.exe"
+          >
+            <Button
+              variant="default"
+              size="sm"
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            >
+              <Download className="h-4 w-4" />
+              Baixar Agente Windows (.exe)
+            </Button>
+          </a>
+
           {resultados.length > 0 && (
             <Button
               onClick={handleLimparTodos}
