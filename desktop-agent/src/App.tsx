@@ -454,7 +454,11 @@ export function App() {
                 <input
                   type="checkbox"
                   checked={config.auto_polling_enabled}
-                  onChange={(e) => setConfig({ ...config, auto_polling_enabled: e.target.checked })}
+                  onChange={(e) => {
+                    const novaConfig = { ...config, auto_polling_enabled: e.target.checked };
+                    setConfig(novaConfig);
+                    sincronizarConfigComServidor(novaConfig);
+                  }}
                   className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
                 />
                 <span>Ativo</span>
@@ -497,16 +501,6 @@ export function App() {
               ))}
             </div>
           </div>
-        </div>
-
-        {/* Salvar Botão */}
-        <div className="flex justify-end pt-2">
-          <button
-            onClick={handleSalvarConfig}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded shadow-md text-sm transition-all uppercase tracking-wide"
-          >
-            <Save className="h-4 w-4" /> Salvar Configurações
-          </button>
         </div>
 
         {/* Seção 3: Histórico e Logs da Execução */}
