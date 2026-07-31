@@ -340,6 +340,8 @@ export async function salvarCidadesAlvoProspeccao(cidades: { estado: string; cid
       );
     }
   }
+}
+
 export async function obterConfigProspeccaoServidor() {
   await ensureTablesExist();
   const resCidades = await pool.query(
