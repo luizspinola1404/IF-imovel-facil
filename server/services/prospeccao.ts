@@ -73,6 +73,16 @@ async function ensureTablesExist() {
         ativo BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS prospeccao_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        polling_schedules JSONB NOT NULL DEFAULT '["08:00", "12:00", "16:00", "20:00"]',
+        auto_polling_enabled BOOLEAN NOT NULL DEFAULT TRUE
+      );
+
+      INSERT INTO prospeccao_config (id, polling_schedules, auto_polling_enabled)
+      VALUES (1, '["08:00", "12:00", "16:00", "20:00"]', true)
+      ON CONFLICT (id) DO NOTHING;
     `);
     tablesChecked = true;
   } catch (err) {
@@ -295,16 +305,6 @@ export async function listarCidadesAlvoProspeccao(): Promise<{ estado: string; c
     "SELECT estado, cidade FROM prospeccao_cidades_alvo WHERE ativo = true ORDER BY id ASC"
   );
 
-  if (res.rows.length === 0) {
-    // Cidades padrão caso não haja nenhuma cadastrada no banco
-    return [
-      { estado: "CE", cidade: "Juazeiro do Norte" },
-      { estado: "PE", cidade: "Petrolina" },
-      { estado: "ES", cidade: "São Mateus" },
-      { estado: "BA", cidade: "Salvador" },
-    ];
-  }
-
   return res.rows.map((row: any) => ({ estado: row.estado, cidade: row.cidade }));
 }
 
@@ -339,5 +339,48 @@ export async function salvarCidadesAlvoProspeccao(cidades: { estado: string; cid
         [c.estado.toUpperCase().trim(), c.cidade.trim()]
       );
     }
+  }
+export async function obterConfigProspeccaoServidor() {
+  await ensureTablesExist();
+  const resCidades = await pool.query(
+    "SELECT estado, cidade FROM prospeccao_cidades_alvo WHERE ativo = true ORDER BY id ASC"
+  );
+  const resConfig = await pool.query(
+    "SELECT polling_schedules, auto_polling_enabled FROM prospeccao_config WHERE id = 1"
+  );
+
+  const cidades = resCidades.rows.map((row: any) => ({ estado: row.estado, cidade: row.cidade }));
+  const cfgRow = resConfig.rows[0] || {};
+
+  return {
+    cidades,
+    polling_schedules: cfgRow.polling_schedules || ["08:00", "12:00", "16:00", "20:00"],
+    auto_polling_enabled: cfgRow.auto_polling_enabled ?? true,
+  };
+}
+
+export async function salvarConfigProspeccaoServidor(data: {
+  cidades?: { estado: string; cidade: string }[];
+  polling_schedules?: string[];
+  auto_polling_enabled?: boolean;
+}) {
+  await ensureTablesExist();
+  
+  if (Array.isArray(data.cidades)) {
+    await salvarCidadesAlvoProspeccao(data.cidades);
+  }
+
+  if (Array.isArray(data.polling_schedules) || typeof data.auto_polling_enabled === "boolean") {
+    const res = await pool.query("SELECT polling_schedules, auto_polling_enabled FROM prospeccao_config WHERE id = 1");
+    const current = res.rows[0] || {};
+    const scheds = JSON.stringify(data.polling_schedules || current.polling_schedules || ["08:00", "12:00", "16:00", "20:00"]);
+    const autoOpt = data.auto_polling_enabled ?? current.auto_polling_enabled ?? true;
+
+    await pool.query(
+      `INSERT INTO prospeccao_config (id, polling_schedules, auto_polling_enabled)
+       VALUES (1, $1::jsonb, $2)
+       ON CONFLICT (id) DO UPDATE SET polling_schedules = $1::jsonb, auto_polling_enabled = $2`,
+      [scheds, autoOpt]
+    );
   }
 }

@@ -49,12 +49,7 @@ export function App() {
   const [config, setConfig] = useState<AgentConfig>({
     server_url: "https://luizspinolaimoveis.com.br",
     polling_schedules: ["08:00", "12:00", "16:00", "20:00"],
-    cidades_alvo: [
-      { estado: "CE", cidade: "Juazeiro do Norte" },
-      { estado: "PE", cidade: "Petrolina" },
-      { estado: "ES", cidade: "São Mateus" },
-      { estado: "BA", cidade: "Salvador" },
-    ],
+    cidades_alvo: [],
     estado: "CE",
     cidade: "Juazeiro do Norte",
     tipo: "Casa",
@@ -70,16 +65,20 @@ export function App() {
   const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
-  const sincronizarCidadesComServidor = async (novaLista: CidadeAlvo[]) => {
+  const sincronizarConfigComServidor = async (cfg: AgentConfig) => {
     try {
-      const endpoint = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
+      const endpoint = `${cfg.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
       await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cidades: novaLista }),
+        body: JSON.stringify({
+          cidades: cfg.cidades_alvo || [],
+          polling_schedules: cfg.polling_schedules || [],
+          auto_polling_enabled: cfg.auto_polling_enabled ?? true,
+        }),
       });
     } catch (e) {
-      console.error("Erro ao sincronizar cidades com o servidor remoto:", e);
+      console.error("Erro ao sincronizar configuração com o servidor remoto:", e);
     }
   };
 
@@ -100,7 +99,7 @@ export function App() {
     if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import("@tauri-apps/api/core").then(({ invoke }) => invoke("save_config", { config: novaConfig }));
     }
-    sincronizarCidadesComServidor(novaLista);
+    sincronizarConfigComServidor(novaConfig);
     adicionarLog(`Cidade alvo adicionada e salva no servidor: ${config.cidade} - ${config.estado}`);
   };
 
@@ -113,7 +112,7 @@ export function App() {
     if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
       import("@tauri-apps/api/core").then(({ invoke }) => invoke("save_config", { config: novaConfig }));
     }
-    sincronizarCidadesComServidor(novaLista);
+    sincronizarConfigComServidor(novaConfig);
     adicionarLog(`Cidade ${cidadeRemovida?.cidade} removida. Imóveis desta cidade foram apagados do servidor remoto.`);
   };
 
@@ -136,18 +135,23 @@ export function App() {
       .finally(() => setCarregandoCidades(false));
   }, [config.estado]);
 
-  // Carregar cidades salvas no Servidor ao iniciar o App
+  // Carregar configurações completas salvas no Servidor ao iniciar o App
   useEffect(() => {
     const endpoint = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
     fetch(endpoint)
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.cidades) && data.cidades.length > 0) {
-          console.log("Cidades salvas no servidor:", data.cidades);
-          setConfig((prev) => ({ ...prev, cidades_alvo: data.cidades }));
+        if (data) {
+          console.log("Configurações salvas no servidor:", data);
+          setConfig((prev) => ({
+            ...prev,
+            cidades_alvo: Array.isArray(data.cidades) ? data.cidades : prev.cidades_alvo,
+            polling_schedules: Array.isArray(data.polling_schedules) ? data.polling_schedules : prev.polling_schedules,
+            auto_polling_enabled: typeof data.auto_polling_enabled === "boolean" ? data.auto_polling_enabled : prev.auto_polling_enabled,
+          }));
         }
       })
-      .catch((e) => console.error("Erro ao carregar cidades alvo do servidor:", e));
+      .catch((e) => console.error("Erro ao carregar configurações do servidor:", e));
   }, []);
 
   useEffect(() => {
@@ -202,15 +206,10 @@ export function App() {
         await invoke("save_config", { config });
       }
 
-      const remoteEndpoint = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
-      fetch(remoteEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cidades: config.cidades_alvo || [] }),
-      }).catch((e) => console.error("Erro ao salvar cidades remotamente:", e));
+      await sincronizarConfigComServidor(config);
 
-      adicionarLog(`Salva configurações e ${config.cidades_alvo?.length || 0} cidades alvo no servidor: ${config.server_url}`);
-      setMensagemSucesso("Configurações e cidades alvo salvas remotamente!");
+      adicionarLog(`Salvas configurações no servidor: ${config.server_url}`);
+      setMensagemSucesso("Configurações salvas remotamente com sucesso!");
       setTimeout(() => setMensagemSucesso(""), 3000);
     } catch (err: any) {
       adicionarLog(`Erro ao salvar configurações: ${err}`);
@@ -225,20 +224,20 @@ export function App() {
     if (config.polling_schedules.includes(novoHorario)) {
       return;
     }
-    setConfig({
-      ...config,
-      polling_schedules: [...config.polling_schedules, novoHorario].sort(),
-    });
+    const novosHorarios = [...config.polling_schedules, novoHorario].sort();
+    const novaConfig = { ...config, polling_schedules: novosHorarios };
+    setConfig(novaConfig);
     setNovoHorario("");
-    adicionarLog(`Novo horário de polling adicionado: ${novoHorario}`);
+    sincronizarConfigComServidor(novaConfig);
+    adicionarLog(`Novo horário de polling adicionado e salvo no servidor: ${novoHorario}`);
   };
 
   const handleRemoverHorario = (horario: string) => {
-    setConfig({
-      ...config,
-      polling_schedules: config.polling_schedules.filter((h) => h !== horario),
-    });
-    adicionarLog(`Horário removido: ${horario}`);
+    const novosHorarios = config.polling_schedules.filter((h) => h !== horario);
+    const novaConfig = { ...config, polling_schedules: novosHorarios };
+    setConfig(novaConfig);
+    sincronizarConfigComServidor(novaConfig);
+    adicionarLog(`Horário removido e atualizado no servidor: ${horario}`);
   };
 
   const handleExecutarAgora = async () => {

@@ -27,25 +27,6 @@ pub struct AgentConfig {
     pub auto_polling_enabled: bool,
 }
 
-impl AgentConfig {
-    pub fn load_from_disk() -> Self {
-        if let Ok(content) = std::fs::read_to_string("agent_config.json") {
-            if let Ok(cfg) = serde_json::from_str::<AgentConfig>(&content) {
-                println!("DEBUG: Configurações carregadas do disco com sucesso!");
-                return cfg;
-            }
-        }
-        Self::default()
-    }
-
-    pub fn save_to_disk(&self) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write("agent_config.json", json).map_err(|e| e.to_string())?;
-        println!("DEBUG: Configurações salvas no disco (agent_config.json).");
-        Ok(())
-    }
-}
-
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
@@ -56,12 +37,7 @@ impl Default for AgentConfig {
                 "16:00".to_string(),
                 "20:00".to_string(),
             ],
-            cidades_alvo: Some(vec![
-                CidadeAlvo { estado: "CE".to_string(), cidade: "Juazeiro do Norte".to_string() },
-                CidadeAlvo { estado: "PE".to_string(), cidade: "Petrolina".to_string() },
-                CidadeAlvo { estado: "ES".to_string(), cidade: "São Mateus".to_string() },
-                CidadeAlvo { estado: "BA".to_string(), cidade: "Salvador".to_string() },
-            ]),
+            cidades_alvo: Some(vec![]),
             estado: "ES".to_string(),
             cidade: "São Mateus".to_string(),
             tipo: "Casa".to_string(),
@@ -227,8 +203,63 @@ async fn raspar_olx(
     logs: &mut Vec<String>,
 ) -> (Vec<ScrapedItem>, String) {
     let target_url = construir_url_olx(estado, tipo, modalidade, cidade, true);
-    registrar_log(app, logs, format!("[{}] 🐍 Buscando {} ({}) em {}-{}...", timestamp_atual(), tipo, modalidade, cidade, estado));
+    registrar_log(app, logs, format!("[{}] ⚡ Buscando {} ({}) em {}-{} (Motor Nativo Rust)...", timestamp_atual(), tipo, modalidade, cidade, estado));
 
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    // Tentar raspagem nativa Rust primeiro
+    match fetch_html_rust(&client, &target_url).await {
+        Ok((200, html)) => {
+            let mut items = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+
+            if let Ok(re) = regex::Regex::new(r#"href="(https://[a-z0-9\.-]*olx\.com\.br/[^"]*?-\d+)""#) {
+                for cap in re.captures_iter(&html) {
+                    if let Some(link_match) = cap.get(1) {
+                        let link = link_match.as_str().to_string();
+                        if !seen.contains(&link) && !link.ends_with(".png") && !link.ends_with(".jpg") {
+                            seen.insert(link.clone());
+
+                            let slug = link.split('/').last().unwrap_or("").to_string();
+                            let raw_title = slug.rsplit_once('-')
+                                .map(|(t, _)| t.replace('-', " "))
+                                .unwrap_or_else(|| format!("Imóvel Particular em {}-{}", cidade, estado));
+
+                            let titulo = raw_title.chars().enumerate().map(|(i, c)| {
+                                if i == 0 || raw_title.chars().nth(i.saturating_sub(1)).map_or(false, |p| p == ' ') {
+                                    c.to_uppercase().next().unwrap_or(c)
+                                } else {
+                                    c
+                                }
+                            }).collect::<String>();
+
+                            let id = format!("olx-{}", slug);
+
+                            items.push(ScrapedItem {
+                                id,
+                                titulo,
+                                link,
+                                fonte: "OLX Brasil (Particular)".to_string(),
+                                trecho: format!("Imóvel de proprietário particular capturado em {}-{}.", cidade, estado),
+                                direto_proprietario: true,
+                            });
+                        }
+                    }
+                }
+            }
+
+            if !items.is_empty() {
+                registrar_log(app, logs, format!("[{}] ✅ Extração nativa concluída! {} imóveis capturados em {}-{}.", timestamp_atual(), items.len(), cidade, estado));
+                return (items, target_url);
+            }
+        }
+        _ => {}
+    }
+
+    // Fallback: Tentar script Python local caso a raspagem nativa Rust não encontre resultados
     let script_file = if std::path::Path::new("scraper_helper.py").exists() {
         "scraper_helper.py"
     } else if std::path::Path::new("src-tauri/scraper_helper.py").exists() {
@@ -237,7 +268,6 @@ async fn raspar_olx(
         "desktop-agent/src-tauri/scraper_helper.py"
     };
 
-    println!("DEBUG: Vai iniciar python3 com args: {} {} {} {}", estado, cidade, tipo, modalidade);
     let output = tokio::process::Command::new("python3")
         .arg(script_file)
         .arg(estado)
@@ -246,7 +276,6 @@ async fn raspar_olx(
         .arg(modalidade)
         .output()
         .await;
-    println!("DEBUG: Retornou do processo python3! Sucesso: {}", output.is_ok());
 
     let mut items = Vec::new();
     let mut final_url = target_url;
@@ -274,7 +303,7 @@ async fn raspar_olx(
             registrar_log(app, logs, format!("[{}] ⚠️ Resposta do script Python foi inválida.", timestamp_atual()));
         }
     } else {
-        registrar_log(app, logs, format!("[{}] ❌ Erro ao iniciar processo Python.", timestamp_atual()));
+        registrar_log(app, logs, format!("[{}] ⚠️ Raspagem finalizada com 0 imóveis para o filtro atual.", timestamp_atual()));
     }
 
     (items, final_url)
@@ -358,7 +387,6 @@ fn get_config(state: State<'_, AppState>) -> AgentConfig {
 
 #[tauri::command]
 fn save_config(config: AgentConfig, state: State<'_, AppState>) -> Result<String, String> {
-    let _ = config.save_to_disk();
     let mut cfg = state.config.lock().unwrap();
     *cfg = config;
     Ok("Configurações salvas com sucesso!".to_string())
@@ -478,7 +506,7 @@ use tauri::{
 fn main() {
     tauri::Builder::default()
         .manage(AppState {
-            config: Mutex::new(AgentConfig::load_from_disk()),
+            config: Mutex::new(AgentConfig::default()),
         })
         .invoke_handler(tauri::generate_handler![
             get_config,

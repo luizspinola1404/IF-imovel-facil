@@ -13,7 +13,7 @@ import { users } from "@shared/models/auth";
 import { scryptSync, randomBytes } from "crypto";
 import multer from "multer";
 import { ensureBucketExists, uploadImage, deleteObjects, isMinioUrl, extractKeyFromUrl } from "./minio";
-import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao, atualizarStatusLeadProspeccao, listarCidadesAlvoProspeccao, salvarCidadesAlvoProspeccao } from "./services/prospeccao";
+import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao, atualizarStatusLeadProspeccao, listarCidadesAlvoProspeccao, salvarCidadesAlvoProspeccao, obterConfigProspeccaoServidor, salvarConfigProspeccaoServidor } from "./services/prospeccao";
 
 // Helper function to hash passwords using Node.js crypto  
 function hashPassword(password: string): string {
@@ -441,26 +441,23 @@ export async function registerRoutes(
 
   app.get("/api/prospeccao/cidades-alvo", async (_req, res) => {
     try {
-      const cidades = await listarCidadesAlvoProspeccao();
-      res.json({ cidades });
+      const config = await obterConfigProspeccaoServidor();
+      res.json(config);
     } catch (err) {
-      console.error("Erro ao listar cidades alvo:", err);
-      res.status(500).json({ error: "Erro ao listar cidades alvo" });
+      console.error("Erro ao listar configuração de prospecção:", err);
+      res.status(500).json({ error: "Erro ao listar configuração de prospecção" });
     }
   });
 
   app.post("/api/prospeccao/cidades-alvo", async (req, res) => {
     try {
-      const { cidades } = req.body || {};
-      if (!Array.isArray(cidades)) {
-        return res.status(400).json({ error: "Lista de cidades deve ser um array." });
-      }
-
-      await salvarCidadesAlvoProspeccao(cidades);
-      res.json({ ok: true, cidades, message: "Lista de cidades alvo salva com sucesso no servidor remoto!" });
+      const { cidades, polling_schedules, auto_polling_enabled } = req.body || {};
+      await salvarConfigProspeccaoServidor({ cidades, polling_schedules, auto_polling_enabled });
+      const updatedConfig = await obterConfigProspeccaoServidor();
+      res.json({ ok: true, ...updatedConfig, message: "Configuração de prospecção salva no servidor remoto!" });
     } catch (err) {
-      console.error("Erro ao salvar cidades alvo:", err);
-      res.status(500).json({ error: "Erro ao salvar cidades alvo" });
+      console.error("Erro ao salvar configuração de prospecção:", err);
+      res.status(500).json({ error: "Erro ao salvar configuração de prospecção" });
     }
   });
 
