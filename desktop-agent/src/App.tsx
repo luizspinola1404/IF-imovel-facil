@@ -11,6 +11,8 @@ import {
   Building,
   RefreshCw,
 } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 interface CidadeAlvo {
   estado: string;
@@ -26,17 +28,6 @@ interface AgentConfig {
   tipo: string;
   modalidade: string;
   auto_polling_enabled: boolean;
-}
-
-interface SyncResult {
-  success: boolean;
-  batch_id: string;
-  target_url?: string;
-  total_encontrados: number;
-  novos_encontrados: number;
-  removidos_encontrados: number;
-  logs?: string[];
-  message: string;
 }
 
 const ESTADOS = [
@@ -62,25 +53,17 @@ export function App() {
   const [novoHorario, setNovoHorario] = useState("");
   const [executando, setExecutando] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
-
-
   const sincronizarConfigComServidor = async (cfg: AgentConfig) => {
-    // 1. Se estiver no Tauri, usar o comando HTTP nativo em Rust (imune a CORS)
-    if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("sync_server_config", { serverUrl: cfg.server_url, config: cfg });
-        console.log("[TAURI] Configurações sincronizadas via Rust nativo com sucesso!");
-        return;
-      } catch (err) {
-        console.error("[TAURI] Erro na sincronização nativa Rust:", err);
-      }
+    try {
+      await invoke("sync_server_config", { serverUrl: cfg.server_url, config: cfg });
+      console.log("[TAURI] Configurações sincronizadas via Rust nativo com sucesso!");
+      return;
+    } catch (err) {
+      console.error("[TAURI] Erro ou ambiente não-Tauri na sincronização nativa:", err);
     }
 
-    // 2. Fallback para navegador web padrão
     try {
       const endpoint = `${cfg.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
       await fetch(endpoint, {
@@ -98,85 +81,76 @@ export function App() {
   };
 
   const handleAdicionarCidadeAlvo = () => {
-    if (!config.cidade || !config.estado) return;
-    const lista = config.cidades_alvo || [];
-    const existe = lista.some(
-      (c) => c.cidade.toLowerCase() === config.cidade.toLowerCase() && c.estado === config.estado
+    if (!config.cidade) return;
+    const jaExiste = config.cidades_alvo?.some(
+      (item) => item.cidade.toLowerCase() === config.cidade.toLowerCase() && item.estado === config.estado
     );
-    if (existe) {
-      alert(`A cidade ${config.cidade}-${config.estado} já está na lista!`);
-      return;
+    if (!jaExiste) {
+      const novaLista = [...(config.cidades_alvo || []), { estado: config.estado, cidade: config.cidade }];
+      const novaConfig = { ...config, cidades_alvo: novaLista };
+      setConfig(novaConfig);
+      sincronizarConfigComServidor(novaConfig);
+      adicionarLog(`Cidade adicionada: ${config.cidade} (${config.estado})`);
     }
-
-    const novaLista = [...lista, { estado: config.estado, cidade: config.cidade }];
-    const novaConfig = { ...config, cidades_alvo: novaLista };
-    setConfig(novaConfig);
-    sincronizarConfigComServidor(novaConfig);
-    adicionarLog(`Cidade alvo adicionada e salva no servidor: ${config.cidade} - ${config.estado}`);
   };
 
   const handleRemoverCidadeAlvo = (index: number) => {
-    const lista = config.cidades_alvo || [];
-    const cidadeRemovida = lista[index];
-    const novaLista = lista.filter((_, idx) => idx !== index);
+    const novaLista = [...(config.cidades_alvo || [])];
+    const removida = novaLista.splice(index, 1)[0];
     const novaConfig = { ...config, cidades_alvo: novaLista };
     setConfig(novaConfig);
     sincronizarConfigComServidor(novaConfig);
-    adicionarLog(`Cidade ${cidadeRemovida?.cidade} removida. Imóveis desta cidade foram apagados do servidor remoto.`);
+    if (removida) {
+      adicionarLog(`Cidade removida: ${removida.cidade} (${removida.estado})`);
+    }
   };
 
-  // Popula o dropdown de cidades do IBGE quando o estado muda - NUNCA toca em cidades_alvo
   useEffect(() => {
     if (!config.estado) return;
     setCarregandoCidades(true);
-    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${config.estado}/municipios?orderBy=nome`)
+    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${config.estado}/municipios`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          const lista = data.map((c: any) => ({ id: c.id, nome: c.nome }));
-          setCidadesIBGE(lista);
+        const ordenadas = data.map((item: any) => ({ id: item.id, nome: item.nome })).sort((a: any, b: any) => a.nome.localeCompare(b.nome));
+        setCidadesIBGE(ordenadas);
+        if (ordenadas.length > 0 && !ordenadas.some((c: any) => c.nome === config.cidade)) {
+          const primeira = ordenadas[0].nome;
+          const novaConfig = { ...config, cidade: primeira };
+          setConfig(novaConfig);
+          sincronizarConfigComServidor(novaConfig);
         }
       })
-      .catch((err) => console.error("Erro ao buscar cidades no IBGE:", err))
+      .catch((err) => console.error("Erro ao buscar cidades do IBGE:", err))
       .finally(() => setCarregandoCidades(false));
   }, [config.estado]);
 
-  // GET remoto ao abrir o app: carrega cidades e agendamentos do servidor
   useEffect(() => {
     const carregarConfigInicial = async () => {
-      // 1. Se estiver no ambiente Tauri Desktop, usa o comando HTTP nativo do Rust (imune a CORS)
-      if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          const data: any = await invoke("fetch_server_config", { serverUrl: config.server_url });
-          if (data) {
-            console.log("[TAURI RUST] Configurações recebidas do servidor:", data);
-            setConfig((prev) => ({
-              ...prev,
-              cidades_alvo: Array.isArray(data.cidades) ? data.cidades : prev.cidades_alvo,
-              polling_schedules: Array.isArray(data.polling_schedules) ? data.polling_schedules : prev.polling_schedules,
-              auto_polling_enabled: typeof data.auto_polling_enabled === "boolean" ? data.auto_polling_enabled : prev.auto_polling_enabled,
-            }));
-            return;
-          }
-        } catch (err) {
-          console.error("[TAURI RUST] Falha no fetch nativo:", err);
-        }
+      try {
+        const serverData = await invoke<any>("fetch_server_config", { serverUrl: config.server_url });
+        console.log("[TAURI] Configurações carregadas do servidor nativo:", serverData);
+        setConfig((prev) => ({
+          ...prev,
+          cidades_alvo: serverData.cidades || prev.cidades_alvo,
+          polling_schedules: serverData.polling_schedules || prev.polling_schedules,
+          auto_polling_enabled: serverData.auto_polling_enabled ?? prev.auto_polling_enabled,
+        }));
+        return;
+      } catch (err) {
+        console.log("[TAURI] Fallback de carregamento web:", err);
       }
 
-      // 2. Fallback para fetch web padrão
-      const endpoint = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
-      fetch(endpoint)
+      fetch(`${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`)
         .then((res) => res.json())
         .then((data) => {
-          if (!data) return;
-          console.log("[SERVIDOR] Configurações recebidas:", data);
-          setConfig((prev) => ({
-            ...prev,
-            cidades_alvo: Array.isArray(data.cidades) ? data.cidades : prev.cidades_alvo,
-            polling_schedules: Array.isArray(data.polling_schedules) ? data.polling_schedules : prev.polling_schedules,
-            auto_polling_enabled: typeof data.auto_polling_enabled === "boolean" ? data.auto_polling_enabled : prev.auto_polling_enabled,
-          }));
+          if (data.cidades) {
+            setConfig((prev) => ({
+              ...prev,
+              cidades_alvo: data.cidades || prev.cidades_alvo,
+              polling_schedules: data.polling_schedules || prev.polling_schedules,
+              auto_polling_enabled: data.auto_polling_enabled ?? prev.auto_polling_enabled,
+            }));
+          }
         })
         .catch((e) => console.error("[SERVIDOR] Erro ao carregar configurações:", e));
     };
@@ -185,43 +159,30 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
+    let unlisten: (() => void) | null = null;
     let isMounted = true;
 
-    const setupListener = async () => {
-      if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-        try {
-          const { listen } = await import("@tauri-apps/api/event");
-          const unlisten = await listen<string>("prospeccao_log", (event) => {
-            console.log("Recebido do Rust:", event.payload);
-            setLogs((prev) => [event.payload, ...prev.slice(0, 99)]);
-            
-            // Detectar progresso ex: [1/16]
-            const match = event.payload.match(/\[(\d+)\/(\d+)\]/);
-            if (match) {
-              setProgresso({ atual: parseInt(match[1]), total: parseInt(match[2]) });
-            }
-            if (event.payload.includes("Varredura completa finalizada!")) {
-              setProgresso(null);
-              setExecutando(false);
-            }
-          });
-          if (isMounted) {
-            unlistenFn = unlisten;
-          } else {
-            unlisten();
-          }
-        } catch (e) {
-          console.error("Erro ao registrar listener do Tauri:", e);
-        }
+    listen<string>("prospeccao_log", (event) => {
+      console.log("[TAURI LOG RECEBIDO]:", event.payload);
+      setLogs((prev) => [event.payload, ...prev.slice(0, 99)]);
+      if (event.payload.includes("Varredura completa finalizada!")) {
+        setExecutando(false);
       }
-    };
-
-    setupListener();
+    })
+      .then((fn) => {
+        if (isMounted) {
+          unlisten = fn;
+        } else {
+          fn();
+        }
+      })
+      .catch((err) => {
+        console.warn("Tauri event listener não disponível no navegador web:", err);
+      });
 
     return () => {
       isMounted = false;
-      if (unlistenFn) unlistenFn();
+      if (unlisten) unlisten();
     };
   }, []);
 
@@ -232,40 +193,33 @@ export function App() {
 
   const handleSalvarConfig = async () => {
     try {
-      if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("save_config", { config });
-      }
-
-      await sincronizarConfigComServidor(config);
-
-      adicionarLog(`Salvas configurações no servidor: ${config.server_url}`);
-      setMensagemSucesso("Configurações salvas remotamente com sucesso!");
-      setTimeout(() => setMensagemSucesso(""), 3000);
-    } catch (err: any) {
-      adicionarLog(`Erro ao salvar configurações: ${err}`);
+      await invoke("save_config", { config });
+    } catch (e) {
+      console.log("Salvar config local web:", e);
     }
+    await sincronizarConfigComServidor(config);
+    setMensagemSucesso("Configurações salvas e sincronizadas com sucesso!");
+    setTimeout(() => setMensagemSucesso(""), 4000);
   };
 
   const handleAdicionarHorario = () => {
-    if (!novoHorario || !/^\d{2}:\d{2}$/.test(novoHorario)) {
-      alert("Por favor digite um horário válido no formato HH:MM (ex: 14:30)");
+    if (!novoHorario) return;
+    if (!/^\d{2}:\d{2}$/.test(novoHorario)) {
+      alert("Formato inválido. Use HH:MM ex: 14:30");
       return;
     }
-    if (config.polling_schedules.includes(novoHorario)) {
-      return;
-    }
-    const novosHorarios = [...config.polling_schedules, novoHorario].sort();
-    const novaConfig = { ...config, polling_schedules: novosHorarios };
+    if (config.polling_schedules.includes(novoHorario)) return;
+    const novosSchedules = [...config.polling_schedules, novoHorario].sort();
+    const novaConfig = { ...config, polling_schedules: novosSchedules };
     setConfig(novaConfig);
-    setNovoHorario("");
     sincronizarConfigComServidor(novaConfig);
-    adicionarLog(`Novo horário de polling adicionado e salvo no servidor: ${novoHorario}`);
+    setNovoHorario("");
+    adicionarLog(`Novo horário agendado e atualizado no servidor: ${novoHorario}`);
   };
 
   const handleRemoverHorario = (horario: string) => {
-    const novosHorarios = config.polling_schedules.filter((h) => h !== horario);
-    const novaConfig = { ...config, polling_schedules: novosHorarios };
+    const novosSchedules = config.polling_schedules.filter((h) => h !== horario);
+    const novaConfig = { ...config, polling_schedules: novosSchedules };
     setConfig(novaConfig);
     sincronizarConfigComServidor(novaConfig);
     adicionarLog(`Horário removido e atualizado no servidor: ${horario}`);
@@ -273,17 +227,12 @@ export function App() {
 
   const handleExecutarAgora = async () => {
     setExecutando(true);
-    const totalCombos = (config.cidades_alvo?.length || 1) * 4 * 2;
-    setProgresso({ atual: 0, total: totalCombos });
     adicionarLog("🚀 Iniciando varredura de prospecção no Agente Desktop...");
 
     try {
-      let resObj: SyncResult;
-
-      if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        resObj = await invoke<SyncResult>("execute_prospeccao_now", { config });
-      } else {
+      await invoke("execute_prospeccao_now", { config });
+    } catch (err: any) {
+      try {
         const targetUrl = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/sync`;
         adicionarLog(`Enviando dados capturados para a API ${targetUrl}...`);
 
@@ -302,44 +251,28 @@ export function App() {
         });
 
         if (!res.ok) throw new Error(`Servidor respondeu HTTP ${res.status}`);
-        const data = await res.json();
-        resObj = {
-          success: true,
-          batch_id: data.batchRecord?.batchId || "batch-desktop",
-          target_url: targetUrl,
-          total_encontrados: data.totalEncontrados || 0,
-          novos_encontrados: data.novosEncontrados || 0,
-          removidos_encontrados: data.removidosEncontrados || 0,
-          logs: [],
-          message: `Sincronização concluída com o servidor ${config.server_url}!`,
-        };
-      }
-
-      adicionarLog(`🎉 Finalizado! ${resObj.novos_encontrados} novos imóveis descobertos, ${resObj.removidos_encontrados} removidos da OLX.`);
-    } catch (err: any) {
-      adicionarLog(`❌ Erro de execução: ${typeof err === 'object' ? JSON.stringify(err) : String(err)}`);
-    } finally {
-      const isTauriEnv = typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__);
-      if (!isTauriEnv) {
+        adicionarLog(`🎉 Sincronização concluída com o servidor ${config.server_url}!`);
+      } catch (webErr: any) {
+        adicionarLog(`❌ Erro de execução: ${webErr.message || String(webErr)}`);
+      } finally {
         setExecutando(false);
-        setProgresso(null);
       }
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
-      {/* Header (App Bar like Material UI) */}
       <div className="bg-gradient-to-r from-blue-700 to-blue-500 shadow-md px-6 py-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="IF Imóvel Fácil" className="h-12 w-12 rounded-lg object-contain bg-white shadow-sm p-1" />
+          <div className="bg-white/10 p-2 rounded-lg backdrop-blur-sm">
+            <Server className="h-6 w-6 text-white" />
+          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-white">
-              Agente Desktop de Prospecção
+            <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              IF Prospecção Agent
+              <span className="text-[10px] bg-blue-900/60 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full font-mono">v1.0.0</span>
             </h1>
-            <p className="text-xs text-blue-100 font-medium">
-              Compatível com Windows, macOS & Linux
-            </p>
+            <p className="text-xs text-blue-100/90 font-medium">Agente Autônomo de Varredura e Captura de Imóveis</p>
           </div>
         </div>
 
@@ -356,32 +289,6 @@ export function App() {
       </div>
 
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        {/* Barra de Progresso de Varredura em Destaque */}
-        {progresso && (
-          <div className="bg-blue-900 text-white rounded-xl shadow-lg border border-blue-700 p-5 space-y-3">
-            <div className="flex items-center justify-between text-sm font-bold">
-              <span className="flex items-center gap-2 text-blue-200 uppercase tracking-wide">
-                <RefreshCw className="h-4 w-4 animate-spin text-blue-400" />
-                Progresso da Varredura de Imóveis
-              </span>
-              <span className="bg-blue-800 text-blue-100 px-3 py-1 rounded-full text-xs font-mono font-semibold">
-                Sub-tarefa {progresso.atual} de {progresso.total} ({Math.round((progresso.atual / (progresso.total || 1)) * 100)}%)
-              </span>
-            </div>
-            <div className="w-full bg-blue-950 rounded-full h-3.5 p-0.5 overflow-hidden border border-blue-700 shadow-inner">
-              <div 
-                className="bg-gradient-to-r from-blue-500 via-indigo-400 to-emerald-400 h-2.5 rounded-full transition-all duration-300 ease-out shadow-sm" 
-                style={{ width: `${Math.max(3, (progresso.atual / (progresso.total || 1)) * 100)}%` }}
-              ></div>
-            </div>
-            {logs.length > 0 && (
-              <p className="text-xs text-blue-200 font-mono truncate pt-1 border-t border-blue-800/60">
-                ⚡ Status atual: {logs[0]}
-              </p>
-            )}
-          </div>
-        )}
-
         {mensagemSucesso && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-md text-sm flex items-center gap-2 shadow-sm">
             <CheckCircle className="h-5 w-5 text-emerald-500" />
@@ -389,14 +296,21 @@ export function App() {
           </div>
         )}
 
-        {/* Seção 1: Configuração do Servidor */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-4">
-          <div className="flex items-center gap-2 text-sm font-bold text-blue-700 border-b border-slate-100 pb-2">
-            <Server className="h-4 w-4" />
-            <span className="uppercase tracking-wider">Servidor do Site</span>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+              <Globe className="h-4 w-4 text-blue-600" />
+              <span className="uppercase tracking-wider">Conexão com o Servidor Central</span>
+            </div>
+            <button
+              onClick={handleSalvarConfig}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-sm transition-all"
+            >
+              <Save className="h-3.5 w-3.5" /> Salvar Configurações
+            </button>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">URL do Servidor</label>
             <div className="relative">
               <Globe className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -408,15 +322,10 @@ export function App() {
                 className="w-full bg-slate-50 border border-slate-300 rounded-md pl-9 pr-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-shadow"
               />
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Onde os imóveis capturados serão armazenados e exibidos.
-            </p>
           </div>
         </div>
 
-        {/* Seção 2: Localização & Agendamento de Polling */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Região e Imóveis */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-5 flex flex-col h-full">
             <div className="flex items-center gap-2 text-sm font-bold text-blue-700 border-b border-slate-100 pb-2.5">
               <Building className="h-4 w-4" />
@@ -454,14 +363,13 @@ export function App() {
                         <option key={c.id} value={c.nome}>{c.nome}</option>
                       ))
                     ) : (
-                      <option value={config.cidade}>{config.cidade || "Carregando cidades..."}</option>
+                      <option value={config.cidade}>{config.cidade || "Carregando..."}</option>
                     )}
                   </select>
                   <button
                     type="button"
                     onClick={handleAdicionarCidadeAlvo}
                     className="h-10 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 rounded-lg flex items-center justify-center gap-1 shrink-0 transition-colors shadow-sm uppercase tracking-wide"
-                    title="Adicionar à lista"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -469,15 +377,12 @@ export function App() {
               </div>
             </div>
 
-            {/* Lista de Cidades Alvo Salvas */}
             <div className="pt-3 border-t border-slate-100 space-y-2 mt-auto">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wide">
                 <span>Cidades Alvo ({config.cidades_alvo?.length || 0})</span>
-                <span className="text-[10px] text-blue-500 font-bold bg-blue-50 px-2 py-0.5 rounded-full">Sincronizado</span>
               </div>
               <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-1">
-                {config.cidades_alvo && config.cidades_alvo.length > 0 ? (
-                  config.cidades_alvo.map((alvo, idx) => (
+                {config.cidades_alvo?.map((alvo, idx) => (
                     <span
                       key={`${alvo.cidade}-${alvo.estado}-${idx}`}
                       className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium px-3 py-1 rounded-full shadow-sm"
@@ -487,20 +392,15 @@ export function App() {
                         type="button"
                         onClick={() => handleRemoverCidadeAlvo(idx)}
                         className="text-slate-400 hover:text-red-500 transition-colors bg-white hover:bg-red-50 rounded-full p-0.5"
-                        title="Remover"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-slate-500">Nenhuma cidade salva.</span>
-                )}
+                  ))}
               </div>
             </div>
           </div>
 
-          {/* Polling por Horários */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-5 flex flex-col h-full">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div className="flex items-center gap-2 text-sm font-bold text-orange-500">
@@ -560,29 +460,13 @@ export function App() {
           </div>
         </div>
 
-        {/* Seção 3: Histórico e Logs da Execução */}
         <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 p-5 space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-700 pb-2">
             <span className="font-mono uppercase tracking-widest font-bold text-blue-400">Terminal de Execução</span>
             <span className="font-medium bg-slate-800 px-2 py-0.5 rounded text-slate-300">{logs.length} registros</span>
           </div>
 
-          {progresso && (
-            <div className="pt-2 pb-1">
-              <div className="flex justify-between text-xs text-blue-300 font-medium mb-1">
-                <span>Progresso da Varredura</span>
-                <span>{progresso.atual} de {progresso.total} ({Math.round((progresso.atual / progresso.total) * 100)}%)</span>
-              </div>
-              <div className="w-full bg-slate-800 rounded-full h-2.5">
-                <div 
-                  className="bg-blue-500 h-2.5 rounded-full transition-all duration-500 ease-out" 
-                  style={{ width: `${(progresso.atual / progresso.total) * 100}%` }}
-                ></div>
-              </div>
-            </div>
-          )}
-
-          <div className="h-48 overflow-y-auto font-mono text-[12px] space-y-1.5 text-slate-300 pt-2">
+          <div className="h-64 overflow-y-auto font-mono text-[12px] space-y-1.5 text-slate-300 pt-2">
             {logs.length === 0 ? (
               <p className="text-slate-500 italic">Nenhuma execução registrada. Clique em "Executar Agora" para testar.</p>
             ) : (
