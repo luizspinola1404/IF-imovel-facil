@@ -261,10 +261,6 @@ async function buscarOLXParticular(params: BuscaParams): Promise<ScraperResult[]
   return results;
 }
 
-import { execFile } from "child_process";
-import path from "path";
-import fs from "fs";
-
 export async function executarScraperRust(params: BuscaParams): Promise<ScraperResult[]> {
   const binaryPath = path.join(process.cwd(), "scraper/target/release/scraper");
   if (!fs.existsSync(binaryPath)) {

@@ -10,6 +10,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import {
   ExternalLink,
@@ -497,38 +503,103 @@ export function ProspeccaoDirect() {
 
       {!buscando && resultados.length > 0 && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Resultados ({resultadosFiltrados.length} de {resultados.length})
-              </span>
-              <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200">
-                {resultados.filter((r) => r.direto_proprietario).length} proprietários diretos
-              </span>
-            </div>
+          <Accordion type="single" collapsible defaultValue="olx-results" className="bg-white border rounded-xl shadow-sm px-4">
+            <AccordionItem value="olx-results" className="border-b-0">
+              <AccordionTrigger className="hover:no-underline py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 w-full pr-4 text-left">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-purple-600 hover:bg-purple-700 text-white border-0 text-xs px-2.5 py-1">
+                      OLX Brasil
+                    </Badge>
+                    <h3 className="text-base font-bold text-slate-800">
+                      Anúncios de Imóveis Encontrados
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs px-2.5 py-1 font-semibold bg-slate-100 text-slate-700">
+                      {resultadosFiltrados.length} {resultadosFiltrados.length === 1 ? 'link' : 'links'} capturados
+                    </Badge>
+                    <Badge className="bg-green-100 text-green-800 border-green-300 text-xs px-2.5 py-1">
+                      {resultados.filter((r) => r.direto_proprietario).length} proprietários diretos
+                    </Badge>
+                  </div>
+                </div>
+              </AccordionTrigger>
 
-            <div className="relative w-full sm:w-64">
-              <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Filtrar nos resultados..."
-                value={filtroTexto}
-                onChange={(e) => setFiltroTexto(e.target.value)}
-                className="pl-8 h-8 text-xs bg-white"
-              />
-            </div>
-          </div>
+              <AccordionContent className="pt-2 pb-6 space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-slate-50 p-3 rounded-lg border">
+                  <div className="text-xs font-medium text-slate-600">
+                    Exibindo todos os links extraídos para <strong className="capitalize">{cidade || 'Região'} - {estado}</strong> ({tipo || 'Imóveis'}, {modalidade})
+                  </div>
 
-          <div className="grid gap-4">
-            {resultadosFiltrados.map((resultado) => (
-              <ResultCard
-                key={resultado.id}
-                resultado={resultado}
-                onSalvarLead={handleSalvarLead}
-                salvandoId={salvandoId}
-                salvo={leadsSalvosIds.has(resultado.id)}
-              />
-            ))}
-          </div>
+                  <div className="relative w-full sm:w-64">
+                    <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Filtrar por palavra-chave..."
+                      value={filtroTexto}
+                      onChange={(e) => setFiltroTexto(e.target.value)}
+                      className="pl-8 h-8 text-xs bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  {resultadosFiltrados.map((resultado, idx) => (
+                    <div key={resultado.id} className="bg-slate-50/50 border rounded-lg p-3 hover:bg-slate-100/50 transition-colors">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-xs font-bold text-slate-400 font-mono w-6">
+                            #{idx + 1}
+                          </span>
+                          <h4 className="font-semibold text-sm text-slate-800 truncate">
+                            {resultado.titulo}
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={resultado.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary inline-flex items-center gap-1 hover:underline font-medium bg-white px-2.5 py-1 rounded border shadow-sm"
+                          >
+                            Abrir Anúncio na OLX
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <Button
+                            size="sm"
+                            variant={leadsSalvosIds.has(resultado.id) ? "secondary" : "outline"}
+                            disabled={salvandoId === resultado.id || leadsSalvosIds.has(resultado.id)}
+                            onClick={() => handleSalvarLead(resultado)}
+                            className="h-7 text-xs gap-1 text-primary hover:bg-primary/10 border-primary/30"
+                          >
+                            {salvandoId === resultado.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : leadsSalvosIds.has(resultado.id) ? (
+                              <>
+                                <CheckCircle className="h-3 w-3 text-green-600" />
+                                <span>Salvo</span>
+                              </>
+                            ) : (
+                              <>
+                                <PlusCircle className="h-3 w-3" />
+                                <span>Salvar Lead</span>
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1.5 pl-8 line-clamp-1">
+                        {resultado.trecho}
+                      </p>
+                      <div className="text-[11px] font-mono text-slate-400 mt-1 pl-8 truncate">
+                        {resultado.link}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
       )}
 

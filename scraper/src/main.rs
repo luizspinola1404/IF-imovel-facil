@@ -31,7 +31,7 @@ fn mapear_tipo_imovel(tipo: &str) -> String {
     }
 }
 
-fn construir_url_olx(estado: &str, tipo: &str, modalidade: &str) -> String {
+fn construir_url_olx(estado: &str, cidade: &str, tipo: &str, modalidade: &str) -> String {
     let st = estado.to_lowercase().replace("estado-", "");
     let uf_param = if st != "br" && st != "todos" && !st.is_empty() {
         format!("estado-{}", st)
@@ -51,7 +51,14 @@ fn construir_url_olx(estado: &str, tipo: &str, modalidade: &str) -> String {
     }
 
     let url_base = parts.join("/");
-    format!("{}?f=p", url_base)
+
+    let mut query_params = vec!["f=p".to_string()];
+    if !cidade.trim().is_empty() {
+        let encoded_city = urlencoding::encode(cidade.trim());
+        query_params.push(format!("q={}", encoded_city));
+    }
+
+    format!("{}?{}", url_base, query_params.join("&"))
 }
 
 fn gerar_id(titulo: &str, link: &str) -> String {
@@ -123,9 +130,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     thread::sleep(Duration::from_millis(1500));
 
-    // 3. Configura o WebDriver do thirtyfour
+    // 3. Configura o WebDriver do thirtyfour com User-Agent de navegador real
     let mut caps = DesiredCapabilities::firefox();
     caps.add_arg("--headless")?;
+    caps.add_arg("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")?;
 
     let driver_url = format!("http://localhost:{}", port);
     let driver = match WebDriver::new(&driver_url, caps).await {
@@ -162,15 +170,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = tx.send(());
     });
 
-    // 5. Executa a raspagem nativa na OLX
+    // 5. Executa a raspagem nativa na OLX com filtro de cidade e proprietário direto
     let res = tokio::select! {
         r = async {
-            let target_url = construir_url_olx(&estado, &tipo, &modalidade);
+            let target_url = construir_url_olx(&estado, &cidade, &tipo, &modalidade);
             let mut results: Vec<SearchResult> = Vec::new();
             let mut seen_links = std::collections::HashSet::new();
 
             if driver.goto(&target_url).await.is_ok() {
-                tokio::time::sleep(Duration::from_millis(2500)).await;
+                tokio::time::sleep(Duration::from_millis(3000)).await;
 
                 let page_html = driver.source().await.unwrap_or_default();
                 let re_total = Regex::new(r"(?i)de\s+(\d+)\s+resultados")?;
@@ -192,11 +200,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for page in 1..=total_pages {
                     if page > 1 {
                         let sep = if target_url.contains('?') { "&" } else { "?" };
-                        let page_url = format!("{}{:?}o={}", target_url, sep, page).replace('"', "");
+                        let page_url = format!("{}&o={}", target_url, page);
                         if driver.goto(&page_url).await.is_err() {
                             break;
                         }
-                        tokio::time::sleep(Duration::from_millis(2500)).await;
+                        tokio::time::sleep(Duration::from_millis(3000)).await;
                     }
 
                     if let Ok(anchors) = driver.find_all(By::Tag("a")).await {
@@ -207,13 +215,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         seen_links.insert(href.clone());
                                         let title = a.text().await.unwrap_or_default();
                                         let clean_title = if title.trim().is_empty() {
-                                            "Imóvel Direto com Proprietário".to_string()
+                                            format!("Imóvel Direto com Proprietário em {}", cidade)
                                         } else {
                                             title.trim().to_string()
                                         };
 
                                         let id = gerar_id(&clean_title, &href);
-                                        let trecho = format!("Imóvel anunciado na OLX em {}-{}. Anúncio direto de particular.", cidade, estado);
+                                        let trecho = format!("Imóvel particular em {}-{}. Anúncio direto de proprietário na OLX.", cidade, estado);
 
                                         results.push(SearchResult {
                                             id,
