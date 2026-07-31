@@ -1,0 +1,62 @@
+name: Build Desktop Agent (Windows Executable)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_server:
+        description: 'URL do servidor de produção para upload do binário (ex: https://luizspinolaimoveis.com.br)'
+        required: false
+        default: 'https://luizspinolaimoveis.com.br'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop-agent/src-tauri -> target
+
+      - name: Install Desktop Agent dependencies
+        run: |
+          cd desktop-agent
+          npm ci
+
+      - name: Build Tauri Desktop Executable
+        run: |
+          cd desktop-agent
+          npm run tauri build
+
+      - name: Upload Executable Artifact to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: IF-Prospeccao-Agent-Windows
+          path: |
+            desktop-agent/src-tauri/target/release/bundle/msi/*.msi
+            desktop-agent/src-tauri/target/release/bundle/nsis/*.exe
+            desktop-agent/src-tauri/target/release/desktop-agent.exe
+
+      - name: Upload Executable to Production Server
+        shell: powershell
+        run: |
+          $exePath = "desktop-agent/src-tauri/target/release/desktop-agent.exe"
+          if (Test-Path $exePath) {
+            Write-Host "Enviando binário compilado para ${{ github.event.inputs.target_server }}/api/admin/desktop-binary..."
+            Invoke-RestMethod -Uri "${{ github.event.inputs.target_server }}/api/admin/desktop-binary" -Method Post -InFile $exePath -ContentType "application/octet-stream"
+          } else {
+            Write-Host "Binário não encontrado em $exePath, pulando upload direto."
+          }

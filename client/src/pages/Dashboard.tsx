@@ -52,6 +52,7 @@ import {
   Loader2,
   Gift,
   Shield,
+  Monitor,
 } from "lucide-react";
 import { type Property } from "@shared/schema";
 import { NumericFormat } from "react-number-format";
@@ -115,6 +116,16 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap justify-end">
+            <a href="/api/desktop-binary/download" target="_blank" rel="noopener noreferrer">
+              <Button
+                variant="outline"
+                className="border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 gap-2 font-medium"
+                title="Baixar Agente Desktop para Prospecção Automática (Windows)"
+              >
+                <Monitor className="h-4 w-4" />
+                <span>Baixar Agente Desktop (Windows)</span>
+              </Button>
+            </a>
             {user?.role === "admin" && (
               <Button
                 variant="ghost"

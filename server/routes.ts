@@ -210,6 +210,46 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // Desktop Agent Executable Storage & Download Routes
+  const desktopBinaryPath = path.join(process.cwd(), "dist", "public", "downloads", "IF-Prospeccao-Agent-Windows.exe");
+
+  app.post("/api/admin/desktop-binary", async (req, res) => {
+    try {
+      const fs = await import("fs");
+      const downloadsDir = path.dirname(desktopBinaryPath);
+      if (!fs.existsSync(downloadsDir)) {
+        fs.mkdirSync(downloadsDir, { recursive: true });
+      }
+
+      const fileStream = fs.createWriteStream(desktopBinaryPath);
+      req.pipe(fileStream);
+
+      fileStream.on("finish", () => {
+        res.json({ ok: true, message: "Agente Desktop atualizado com sucesso!" });
+      });
+      fileStream.on("error", (err) => {
+        console.error("Erro ao salvar binário desktop:", err);
+        res.status(500).json({ error: "Erro ao salvar o arquivo do executável" });
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Falha ao processar upload do binário" });
+    }
+  });
+
+  app.get("/api/desktop-binary/download", async (_req, res) => {
+    try {
+      const fs = await import("fs");
+      if (!fs.existsSync(desktopBinaryPath)) {
+        return res.status(404).json({ error: "Binário do Agente Desktop ainda não foi compilado ou disponibilizado." });
+      }
+      res.download(desktopBinaryPath, "IF-Prospeccao-Agent-Windows.exe");
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Erro ao fazer download do Agente Desktop" });
+    }
+  });
+
   // Admin user management endpoints
   function ensureAdmin(req: any, res: any, next: any) {
     const userId = req.user?.claims?.sub;

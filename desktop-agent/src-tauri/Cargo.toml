@@ -1,0 +1,23 @@
+[package]
+name = "desktop-agent"
+version = "1.0.0"
+description = "Agente Desktop Multiplataforma para Prospecção Automática de Imóveis"
+authors = ["Imóvel Fácil Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.6", features = [ "shell-open", "system-tray", "notification" ] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1.0", features = ["full"] }
+chrono = "0.4"
+regex = "1.10"
+scraper = "0.18"
+
+[features]
+# por padrão desabilita janela de terminal extra no Windows em produção
+custom-protocol = ["tauri/custom-protocol"]
