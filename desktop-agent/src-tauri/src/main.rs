@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{Emitter, State};
+use headless_chrome::{Browser, LaunchOptionsBuilder};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CidadeAlvo {
@@ -25,6 +26,12 @@ pub struct AgentConfig {
     #[serde(default)]
     pub modalidade: String,
     pub auto_polling_enabled: bool,
+    #[serde(default = "default_headless")]
+    pub headless: bool,
+}
+
+fn default_headless() -> bool {
+    true
 }
 
 impl Default for AgentConfig {
@@ -43,6 +50,7 @@ impl Default for AgentConfig {
             tipo: "Casa".to_string(),
             modalidade: "venda".to_string(),
             auto_polling_enabled: true,
+            headless: true,
         }
     }
 }
@@ -101,6 +109,18 @@ fn md5_hash(input: &str) -> u64 {
     hash
 }
 
+fn mapa_tipo_slug(tipo: &str) -> String {
+    match tipo.to_lowercase().trim() {
+        "casa" | "casas" => "casas".to_string(),
+        "apartamento" | "apartamentos" => "apartamentos".to_string(),
+        "terreno" | "terrenos" | "lote" | "lotes" => "terrenos-e-lotes".to_string(),
+        "comercial" | "sala" | "galpao" => "comercio-e-industria".to_string(),
+        "imoveis" => "imoveis".to_string(),
+        "todos" => "".to_string(),
+        other => other.to_string(),
+    }
+}
+
 fn construir_url_olx(estado: &str, tipo: &str, modalidade: &str, cidade: &str, apenas_particular: bool) -> String {
     let cidade_input = cidade.trim();
     if cidade_input.starts_with("http://") || cidade_input.starts_with("https://") {
@@ -113,26 +133,19 @@ fn construir_url_olx(estado: &str, tipo: &str, modalidade: &str, cidade: &str, a
         return url;
     }
 
-    let clean_uf = estado.to_lowercase().replace("estado-", "");
-    let uf_param = if !clean_uf.is_empty() && clean_uf != "br" && clean_uf != "todos" {
-        format!("estado-{}", clean_uf)
+    let st = estado.to_lowercase().replace("estado-", "").trim().to_string();
+    let uf_param = if !st.is_empty() && st != "br" && st != "todos" && st != "all" {
+        format!("estado-{}", st)
     } else {
         "".to_string()
     };
 
-    let clean_tipo = match tipo.to_lowercase().as_str() {
-        t if t.contains("casa") => "casas",
-        t if t.contains("ap") => "apartamentos",
-        t if t.contains("terr") || t.contains("lote") => "terrenos-e-lotes",
-        t if t.contains("comercial") || t.contains("sala") => "comercio-e-industria",
-        _ => "imoveis",
-    };
+    let tipo_slug = mapa_tipo_slug(tipo);
+    let mod_slug = modalidade.to_lowercase().trim().to_string();
 
-    let clean_mod = if modalidade.to_lowercase() == "aluguel" { "aluguel" } else { "venda" };
-
-    let mut parts = vec!["https://www.olx.com.br/imoveis".to_string(), clean_mod.to_string()];
-    if clean_tipo != "imoveis" {
-        parts.push(clean_tipo.to_string());
+    let mut parts = vec!["https://www.olx.com.br/imoveis".to_string(), mod_slug];
+    if !tipo_slug.is_empty() && tipo_slug != "imoveis" {
+        parts.push(tipo_slug);
     }
     if !uf_param.is_empty() {
         parts.push(uf_param);
@@ -160,32 +173,6 @@ fn timestamp_atual() -> String {
     chrono::Local::now().format("%H:%M:%S").to_string()
 }
 
-async fn fetch_html_rust(client: &reqwest::Client, url: &str) -> Result<(u16, String), String> {
-    let req_builder = client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(10))
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-        .header("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
-        .header("Sec-Ch-Ua", "\"Google Chrome\";v=\"123\", \"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"123\"")
-        .header("Sec-Ch-Ua-Mobile", "?0")
-        .header("Sec-Ch-Ua-Platform", "\"Windows\"")
-        .header("Sec-Fetch-Dest", "document")
-        .header("Sec-Fetch-Mode", "navigate")
-        .header("Sec-Fetch-Site", "none")
-        .header("Sec-Fetch-User", "?1")
-        .header("Upgrade-Insecure-Requests", "1");
-
-    match req_builder.send().await {
-        Ok(resp) => {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.map_err(|e| e.to_string())?;
-            Ok((status, text))
-        }
-        Err(err) => Err(format!("Timeout/Erro de rede ({})", err)),
-    }
-}
-
 fn registrar_log(app: &tauri::AppHandle, logs: &mut Vec<String>, msg: String) {
     println!("LOG EMITIDO: {}", msg);
     logs.push(msg.clone());
@@ -201,112 +188,163 @@ async fn raspar_olx(
     tipo: &str,
     modalidade: &str,
     logs: &mut Vec<String>,
+    headless: bool,
 ) -> (Vec<ScrapedItem>, String) {
-    let target_url = construir_url_olx(estado, tipo, modalidade, cidade, true);
-    registrar_log(app, logs, format!("[{}] ⚡ Buscando {} ({}) em {}-{} (Motor Nativo Rust)...", timestamp_atual(), tipo, modalidade, cidade, estado));
-
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
-
-    // Tentar raspagem nativa Rust primeiro
-    match fetch_html_rust(&client, &target_url).await {
-        Ok((200, html)) => {
-            let mut items = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-
-            if let Ok(re) = regex::Regex::new(r#"href="(https://[a-z0-9\.-]*olx\.com\.br/[^"]*?-\d+)""#) {
-                for cap in re.captures_iter(&html) {
-                    if let Some(link_match) = cap.get(1) {
-                        let link = link_match.as_str().to_string();
-                        if !seen.contains(&link) && !link.ends_with(".png") && !link.ends_with(".jpg") {
-                            seen.insert(link.clone());
-
-                            let slug = link.split('/').last().unwrap_or("").to_string();
-                            let raw_title = slug.rsplit_once('-')
-                                .map(|(t, _)| t.replace('-', " "))
-                                .unwrap_or_else(|| format!("Imóvel Particular em {}-{}", cidade, estado));
-
-                            let titulo = raw_title.chars().enumerate().map(|(i, c)| {
-                                if i == 0 || raw_title.chars().nth(i.saturating_sub(1)).map_or(false, |p| p == ' ') {
-                                    c.to_uppercase().next().unwrap_or(c)
-                                } else {
-                                    c
-                                }
-                            }).collect::<String>();
-
-                            let id = format!("olx-{}", slug);
-
-                            items.push(ScrapedItem {
-                                id,
-                                titulo,
-                                link,
-                                fonte: "OLX Brasil (Particular)".to_string(),
-                                trecho: format!("Imóvel de proprietário particular capturado em {}-{}.", cidade, estado),
-                                direto_proprietario: true,
-                            });
-                        }
-                    }
-                }
-            }
-
-            if !items.is_empty() {
-                registrar_log(app, logs, format!("[{}] ✅ Extração nativa concluída! {} imóveis capturados em {}-{}.", timestamp_atual(), items.len(), cidade, estado));
-                return (items, target_url);
-            }
-        }
-        _ => {}
+    let mut target_url = construir_url_olx(estado, tipo, modalidade, cidade, true);
+    if !target_url.contains("f=p") {
+        let sep = if target_url.contains('?') { "&" } else { "?" };
+        target_url.push_str(&format!("{}f=p", sep));
     }
 
-    // Fallback: Tentar script Python local caso a raspagem nativa Rust não encontre resultados
-    let script_file = if std::path::Path::new("scraper_helper.py").exists() {
-        "scraper_helper.py"
-    } else if std::path::Path::new("src-tauri/scraper_helper.py").exists() {
-        "src-tauri/scraper_helper.py"
-    } else {
-        "desktop-agent/src-tauri/scraper_helper.py"
+    registrar_log(app, logs, format!("[{}] ⚡ Conectando ao Google Chrome em {}-{} ({}/{})...", timestamp_atual(), cidade, estado, tipo, modalidade));
+
+    let args: Vec<&std::ffi::OsStr> = vec![
+        std::ffi::OsStr::new("--disable-blink-features=AutomationControlled"),
+        std::ffi::OsStr::new("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
+        std::ffi::OsStr::new("--no-sandbox"),
+        std::ffi::OsStr::new("--disable-setuid-sandbox"),
+    ];
+
+    let options = match LaunchOptionsBuilder::default()
+        .headless(headless)
+        .args(args)
+        .build() {
+            Ok(o) => o,
+            Err(e) => {
+                registrar_log(app, logs, format!("[{}] ❌ Erro ao configurar Chrome: {}", timestamp_atual(), e));
+                return (vec![], target_url);
+            }
+        };
+
+    let browser = match Browser::new(options) {
+        Ok(b) => b,
+        Err(e) => {
+            registrar_log(app, logs, format!("[{}] ❌ Erro ao abrir Google Chrome: {}", timestamp_atual(), e));
+            return (vec![], target_url);
+        }
     };
 
-    let output = tokio::process::Command::new("python3")
-        .arg(script_file)
-        .arg(estado)
-        .arg(cidade)
-        .arg(tipo)
-        .arg(modalidade)
-        .output()
-        .await;
-
-    let mut items = Vec::new();
-    let mut final_url = target_url;
-
-    if let Ok(out) = output {
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&stdout) {
-            if let Some(u) = parsed["target_url"].as_str() {
-                final_url = u.to_string();
-            }
-            if let Some(arr) = parsed["items"].as_array() {
-                for it in arr {
-                    items.push(ScrapedItem {
-                        id: it["id"].as_str().unwrap_or("").to_string(),
-                        titulo: it["titulo"].as_str().unwrap_or("").to_string(),
-                        link: it["link"].as_str().unwrap_or("").to_string(),
-                        fonte: it["fonte"].as_str().unwrap_or("OLX Brasil (Particular)").to_string(),
-                        trecho: it["trecho"].as_str().unwrap_or("").to_string(),
-                        direto_proprietario: true,
-                    });
-                }
-            }
-            registrar_log(app, logs, format!("[{}] ✅ Extração concluída! {} imóveis capturados em {}-{}.", timestamp_atual(), items.len(), cidade, estado));
-        } else {
-            registrar_log(app, logs, format!("[{}] ⚠️ Resposta do script Python foi inválida.", timestamp_atual()));
+    let tab = match browser.new_tab() {
+        Ok(t) => t,
+        Err(e) => {
+            registrar_log(app, logs, format!("[{}] ❌ Erro ao abrir aba no Chrome: {}", timestamp_atual(), e));
+            return (vec![], target_url);
         }
-    } else {
-        registrar_log(app, logs, format!("[{}] ⚠️ Raspagem finalizada com 0 imóveis para o filtro atual.", timestamp_atual()));
+    };
+
+    registrar_log(app, logs, format!("[{}] 🌐 Acessando URL: {}", timestamp_atual(), target_url));
+    if let Err(e) = tab.navigate_to(&target_url) {
+        registrar_log(app, logs, format!("[{}] ❌ Erro ao navegar para a URL: {}", timestamp_atual(), e));
+        return (vec![], target_url);
     }
 
-    (items, final_url)
+    registrar_log(app, logs, format!("[{}] ⏳ Aguardando carregamento dos imóveis...", timestamp_atual()));
+    let _ = tab.wait_until_navigated();
+    tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+
+    let html_inicial = match tab.get_content() {
+        Ok(c) => c,
+        Err(e) => {
+            registrar_log(app, logs, format!("[{}] ❌ Erro ao ler conteúdo da página: {}", timestamp_atual(), e));
+            return (vec![], target_url);
+        }
+    };
+
+    let mut total_imoveis = 0;
+    if let Ok(re_tot) = regex::Regex::new(r#"(?i)(?:de\s+)?([\d\.]+)\s+resultados"#) {
+        if let Some(cap) = re_tot.captures(&html_inicial) {
+            if let Some(m) = cap.get(1) {
+                let num_str = m.as_str().replace('.', "");
+                total_imoveis = num_str.parse::<usize>().unwrap_or(0);
+            }
+        }
+    }
+
+    let total_paginas = if total_imoveis > 0 { (total_imoveis as f64 / 50.0).ceil() as usize } else { 1 };
+    let max_paginas = if total_imoveis == 0 { 1 } else { std::cmp::min(total_paginas, 3) };
+
+    registrar_log(app, logs, format!("[{}] 📊 Total de imóveis detectados: {} (varrendo {} páginas)...", timestamp_atual(), total_imoveis, max_paginas));
+
+    let mut todos_os_items = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let re_href = regex::Regex::new(r#"href="(https://[a-z0-9\.-]*olx\.com\.br/[^"]*?-\d+)""#).unwrap();
+    let re_all = regex::Regex::new(r#"https://[a-z0-9\.-]*olx\.com\.br/[^"'\s\?]*?-\d+"#).unwrap();
+
+    for pagina in 1..=max_paginas {
+        let html_pagina = if pagina == 1 {
+            html_inicial.clone()
+        } else {
+            let sep = if target_url.contains('?') { "&" } else { "?" };
+            let url_pag = format!("{}{:?}o={}", target_url, sep, pagina);
+            registrar_log(app, logs, format!("[{}] 🔄 Lendo página {}/{}...", timestamp_atual(), pagina, max_paginas));
+            if let Ok(_) = tab.navigate_to(&url_pag) {
+                let _ = tab.wait_until_navigated();
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                tab.get_content().unwrap_or_default()
+            } else {
+                break;
+            }
+        };
+
+        let mut matches = Vec::new();
+        for cap in re_href.captures_iter(&html_pagina) {
+            if let Some(m) = cap.get(1) {
+                matches.push(m.as_str().to_string());
+            }
+        }
+        if matches.is_empty() {
+            for cap in re_all.captures_iter(&html_pagina) {
+                if let Some(m) = cap.get(0) {
+                    matches.push(m.as_str().to_string());
+                }
+            }
+        }
+
+        let mut novos_na_pagina = 0;
+        for link in matches {
+            if !seen.contains(&link) && !link.ends_with(".png") && !link.ends_with(".jpg") && !link.ends_with(".ico") {
+                seen.insert(link.clone());
+                novos_na_pagina += 1;
+
+                let slug = link.split('/').last().unwrap_or("").to_string();
+                let raw_title = slug.rsplit_once('-')
+                    .map(|(t, _)| t.replace('-', " "))
+                    .unwrap_or_else(|| format!("Imóvel Particular em {}-{}", cidade, estado));
+
+                let titulo = raw_title.chars().enumerate().map(|(i, c)| {
+                    if i == 0 || raw_title.chars().nth(i.saturating_sub(1)).map_or(false, |p| p == ' ') {
+                        c.to_uppercase().next().unwrap_or(c)
+                    } else {
+                        c
+                    }
+                }).collect::<String>();
+
+                let id = format!("olx-{}", slug);
+
+                todos_os_items.push(ScrapedItem {
+                    id,
+                    titulo,
+                    link,
+                    fonte: "OLX Brasil (Particular)".to_string(),
+                    trecho: format!("Imóvel de proprietário particular capturado em {}-{}.", cidade, estado),
+                    direto_proprietario: true,
+                });
+            }
+        }
+
+        if novos_na_pagina == 0 {
+            break;
+        }
+    }
+
+    if todos_os_items.is_empty() {
+        registrar_log(app, logs, format!("[{}] ⚠️ Raspagem finalizada com 0 imóveis para este filtro.", timestamp_atual()));
+    } else {
+        registrar_log(app, logs, format!("[{}] ✅ Extração concluída! {} imóveis capturados com sucesso.", timestamp_atual(), todos_os_items.len()));
+    }
+
+    (todos_os_items, target_url)
 }
 
 async fn enviar_para_servidor(
@@ -522,7 +560,8 @@ async fn execute_prospeccao_now(
                         &alvo.cidade,
                         tipo,
                         modalidade,
-                        &mut logs
+                        &mut logs,
+                        active_config.headless
                     ).await;
 
                     _last_target_url = target_url.clone();

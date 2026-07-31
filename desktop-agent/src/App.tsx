@@ -28,6 +28,7 @@ interface AgentConfig {
   tipo: string;
   modalidade: string;
   auto_polling_enabled: boolean;
+  headless: boolean;
 }
 
 const ESTADOS = [
@@ -46,6 +47,7 @@ export function App() {
     tipo: "Casa",
     modalidade: "venda",
     auto_polling_enabled: true,
+    headless: true,
   });
 
   const [cidadesIBGE, setCidadesIBGE] = useState<{ id: number; nome: string }[]>([]);
@@ -407,19 +409,34 @@ export function App() {
                 <Clock className="h-4 w-4" />
                 <span className="uppercase tracking-wider">Agendamentos</span>
               </div>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.auto_polling_enabled}
-                  onChange={(e) => {
-                    const novaConfig = { ...config, auto_polling_enabled: e.target.checked };
-                    setConfig(novaConfig);
-                    sincronizarConfigComServidor(novaConfig);
-                  }}
-                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
-                />
-                <span>Ativo</span>
-              </label>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.headless}
+                    onChange={(e) => {
+                      const novaConfig = { ...config, headless: e.target.checked };
+                      setConfig(novaConfig);
+                      sincronizarConfigComServidor(novaConfig);
+                    }}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                  />
+                  <span>Modo Invisível (Headless)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.auto_polling_enabled}
+                    onChange={(e) => {
+                      const novaConfig = { ...config, auto_polling_enabled: e.target.checked };
+                      setConfig(novaConfig);
+                      sincronizarConfigComServidor(novaConfig);
+                    }}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                  />
+                  <span>Auto-Polling Ativo</span>
+                </label>
+              </div>
             </div>
 
             <div className="space-y-1.5">
