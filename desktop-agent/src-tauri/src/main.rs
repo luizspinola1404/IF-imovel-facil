@@ -294,11 +294,27 @@ fn save_config(config: AgentConfig, state: State<'_, AppState>) -> Result<String
 }
 
 #[tauri::command]
-async fn execute_prospeccao_now(state: State<'_, AppState>) -> Result<SyncResult, String> {
-    let cfg = state.config.lock().unwrap().clone();
+async fn execute_prospeccao_now(
+    config: Option<AgentConfig>,
+    state: State<'_, AppState>
+) -> Result<SyncResult, String> {
+    let active_config = match config {
+        Some(c) => {
+            let mut state_cfg = state.config.lock().unwrap();
+            *state_cfg = c.clone();
+            c
+        }
+        None => state.config.lock().unwrap().clone(),
+    };
     let mut logs = Vec::new();
-    let (items, target_url) = raspar_olx(&cfg.estado, &cfg.cidade, &cfg.tipo, &cfg.modalidade, &mut logs).await;
-    enviar_para_servidor(&cfg, items, target_url, logs).await
+    let (items, target_url) = raspar_olx(
+        &active_config.estado,
+        &active_config.cidade,
+        &active_config.tipo,
+        &active_config.modalidade,
+        &mut logs
+    ).await;
+    enviar_para_servidor(&active_config, items, target_url, logs).await
 }
 
 fn main() {

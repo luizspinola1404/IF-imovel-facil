@@ -57,9 +57,17 @@ export function App() {
   };
 
   const handleSalvarConfig = async () => {
-    adicionarLog(`Salva configuração para o servidor: ${config.server_url}`);
-    setMensagemSucesso("Configurações salvas com sucesso!");
-    setTimeout(() => setMensagemSucesso(""), 3000);
+    try {
+      if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("save_config", { config });
+      }
+      adicionarLog(`Salva configurações (${config.cidade}-${config.estado}) para o servidor: ${config.server_url}`);
+      setMensagemSucesso("Configurações salvas com sucesso!");
+      setTimeout(() => setMensagemSucesso(""), 3000);
+    } catch (err: any) {
+      adicionarLog(`Erro ao salvar configurações: ${err}`);
+    }
   };
 
   const handleAdicionarHorario = () => {
@@ -96,7 +104,7 @@ export function App() {
       if (typeof window !== "undefined" && ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)) {
         adicionarLog(`Executando motor nativo de raspagem em Rust...`);
         const { invoke } = await import("@tauri-apps/api/core");
-        resObj = await invoke<SyncResult>("execute_prospeccao_now");
+        resObj = await invoke<SyncResult>("execute_prospeccao_now", { config });
 
         if (Array.isArray(resObj.logs)) {
           resObj.logs.forEach((stepLog) => adicionarLog(stepLog));

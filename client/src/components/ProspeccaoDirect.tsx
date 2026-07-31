@@ -221,18 +221,17 @@ export function ProspeccaoDirect() {
             </Button>
           </a>
 
-          {resultados.length > 0 && (
-            <Button
-              onClick={handleLimparTodos}
-              disabled={carregando}
-              variant="outline"
-              size="sm"
-              className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-            >
-              <Trash2 className="h-4 w-4" />
-              Limpar Lista
-            </Button>
-          )}
+          <Button
+            onClick={handleLimparTodos}
+            disabled={carregando}
+            variant="destructive"
+            size="sm"
+            className="gap-2 font-medium bg-red-600 hover:bg-red-700 text-white"
+            title="Excluir todos os imóveis da lista"
+          >
+            <Trash2 className="h-4 w-4" />
+            Limpar Lista
+          </Button>
 
           <Button
             onClick={carregarLeadsSincronizados}

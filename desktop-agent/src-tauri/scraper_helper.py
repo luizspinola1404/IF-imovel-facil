@@ -81,31 +81,42 @@ def raspar_links_de_url_olx(url: str, cidade: str = "", estado: str = "") -> lis
         url = f"{url}{sep}f=p"
 
     html_inicial = fetch_html(url)
+
+    total_imoveis = 0
+    m = re.search(r'de\s+([\d\.]+)\s+resultados', html_inicial, re.IGNORECASE) or re.search(r'([\d\.]+)\s+resultados', html_inicial, re.IGNORECASE)
+    if m:
+        try:
+            total_imoveis = int(m.group(1).replace('.', ''))
+        except Exception:
+            total_imoveis = 0
+
+    total_paginas = math.ceil(total_imoveis / 50) if total_imoveis > 0 else 1
+    max_paginas = max(total_paginas, 10) if total_imoveis == 0 else min(total_paginas, 25)
+
     todos_os_items = []
     seen = set()
 
-    pattern_href = r'href="(https://[a-z0-9\.-]*olx\.com\.br/[^"]*?-\d+)"'
-    full_matches = re.finditer(pattern_href, html_inicial)
-    for m in full_matches:
-        link = m.group(1)
-        if link not in seen and not link.endswith(('.png', '.jpg', '.ico')):
-            seen.add(link)
-            slug = link.split('/')[-1]
-            titulo_raw = slug.rsplit('-', 1)[0].replace('-', ' ').title()
-            todos_os_items.append({
-                "id": f"olx-{len(todos_os_items)+1}",
-                "titulo": titulo_raw or f"Imóvel Particular em {cidade}-{estado}",
-                "link": link,
-                "fonte": "OLX Brasil (Particular)",
-                "trecho": f"Imóvel de proprietário particular capturado em {cidade}-{estado}.",
-                "direto_proprietario": True
-            })
+    for pagina in range(1, max_paginas + 1):
+        if pagina == 1:
+            html = html_inicial
+        else:
+            sep = "&" if "?" in url else "?"
+            url_pag = f"{url}{sep}o={pagina}"
+            try:
+                html = fetch_html(url_pag)
+            except Exception:
+                break
 
-    if not todos_os_items:
-        raw_urls = re.findall(r'https://[a-z0-9\.-]*olx\.com\.br/[^"\'\s]*?-\d+', html_inicial)
-        for link in raw_urls:
+        pattern_href = r'href="(https://[a-z0-9\.-]*olx\.com\.br/[^"]*?-\d+)"'
+        matches = [match.group(1) for match in re.finditer(pattern_href, html)]
+        if not matches:
+            matches = re.findall(r'https://[a-z0-9\.-]*olx\.com\.br/[^"\'\s]*?-\d+', html)
+
+        novos_na_pagina = 0
+        for link in matches:
             if link not in seen and not link.endswith(('.png', '.jpg', '.ico')):
                 seen.add(link)
+                novos_na_pagina += 1
                 slug = link.split('/')[-1]
                 titulo_raw = slug.rsplit('-', 1)[0].replace('-', ' ').title()
                 todos_os_items.append({
@@ -116,6 +127,9 @@ def raspar_links_de_url_olx(url: str, cidade: str = "", estado: str = "") -> lis
                     "trecho": f"Imóvel de proprietário particular capturado em {cidade}-{estado}.",
                     "direto_proprietario": True
                 })
+
+        if novos_na_pagina == 0 and pagina > 1:
+            break
 
     return todos_os_items
 
