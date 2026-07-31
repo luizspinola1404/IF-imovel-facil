@@ -12,9 +12,15 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+interface CidadeAlvo {
+  estado: string;
+  cidade: string;
+}
+
 interface AgentConfig {
   server_url: string;
   polling_schedules: string[];
+  cidades_alvo?: CidadeAlvo[];
   estado: string;
   cidade: string;
   tipo: string;
@@ -33,23 +39,77 @@ interface SyncResult {
   message: string;
 }
 
-const ESTADOS = ["ES", "SP", "RJ", "MG", "BA", "CE", "PR", "SC", "RS", "PE", "GO", "DF"];
+const ESTADOS = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
+  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
+  "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+];
 
 export function App() {
   const [config, setConfig] = useState<AgentConfig>({
     server_url: "https://luizspinolaimoveis.com.br",
     polling_schedules: ["08:00", "12:00", "16:00", "20:00"],
-    estado: "ES",
-    cidade: "São Mateus",
+    cidades_alvo: [
+      { estado: "CE", cidade: "Juazeiro do Norte" },
+      { estado: "PE", cidade: "Petrolina" },
+      { estado: "ES", cidade: "São Mateus" },
+      { estado: "BA", cidade: "Salvador" },
+    ],
+    estado: "CE",
+    cidade: "Juazeiro do Norte",
     tipo: "Casa",
     modalidade: "venda",
     auto_polling_enabled: true,
   });
 
+  const [cidadesIBGE, setCidadesIBGE] = useState<{ id: number; nome: string }[]>([]);
+  const [carregandoCidades, setCarregandoCidades] = useState(false);
   const [novoHorario, setNovoHorario] = useState("");
   const [executando, setExecutando] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [mensagemSucesso, setMensagemSucesso] = useState("");
+
+  const handleAdicionarCidadeAlvo = () => {
+    if (!config.cidade || !config.estado) return;
+    const lista = config.cidades_alvo || [];
+    const existe = lista.some(
+      (c) => c.cidade.toLowerCase() === config.cidade.toLowerCase() && c.estado === config.estado
+    );
+    if (existe) {
+      alert(`A cidade ${config.cidade}-${config.estado} já está na lista!`);
+      return;
+    }
+
+    const novaLista = [...lista, { estado: config.estado, cidade: config.cidade }];
+    setConfig({ ...config, cidades_alvo: novaLista });
+    adicionarLog(`Cidade alvo adicionada: ${config.cidade} - ${config.estado}`);
+  };
+
+  const handleRemoverCidadeAlvo = (index: number) => {
+    const lista = config.cidades_alvo || [];
+    const novaLista = lista.filter((_, idx) => idx !== index);
+    setConfig({ ...config, cidades_alvo: novaLista });
+    adicionarLog(`Cidade removida da lista de alvos.`);
+  };
+
+  useEffect(() => {
+    if (!config.estado) return;
+    setCarregandoCidades(true);
+    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${config.estado}/municipios?orderBy=nome`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const lista = data.map((c: any) => ({ id: c.id, nome: c.nome }));
+          setCidadesIBGE(lista);
+          // Se a cidade atual não pertence ao novo estado, seleciona a primeira do IBGE
+          if (lista.length > 0 && !lista.some((c) => c.nome.toLowerCase() === config.cidade.toLowerCase())) {
+            setConfig((prev) => ({ ...prev, cidade: lista[0].nome }));
+          }
+        }
+      })
+      .catch((err) => console.error("Erro ao buscar cidades no IBGE:", err))
+      .finally(() => setCarregandoCidades(false));
+  }, [config.estado]);
 
   const adicionarLog = (msg: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -62,8 +122,16 @@ export function App() {
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("save_config", { config });
       }
-      adicionarLog(`Salva configurações (${config.cidade}-${config.estado}) para o servidor: ${config.server_url}`);
-      setMensagemSucesso("Configurações salvas com sucesso!");
+
+      const remoteEndpoint = `${config.server_url.replace(/\/$/, "")}/api/prospeccao/cidades-alvo`;
+      fetch(remoteEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cidades: config.cidades_alvo || [] }),
+      }).catch((e) => console.error("Erro ao salvar cidades remotamente:", e));
+
+      adicionarLog(`Salva configurações e ${config.cidades_alvo?.length || 0} cidades alvo no servidor: ${config.server_url}`);
+      setMensagemSucesso("Configurações e cidades alvo salvas remotamente!");
       setTimeout(() => setMensagemSucesso(""), 3000);
     } catch (err: any) {
       adicionarLog(`Erro ao salvar configurações: ${err}`);
@@ -237,14 +305,39 @@ export function App() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400 font-medium">Cidade ou URL Regional OLX</label>
-              <input
-                type="text"
-                value={config.cidade}
-                onChange={(e) => setConfig({ ...config, cidade: e.target.value })}
-                placeholder="Ex: São Mateus ou https://www.olx.com.br/imoveis/..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 shadow-inner"
-              />
+              <label className="text-xs text-slate-400 font-medium flex items-center justify-between">
+                <span>Cidade (IBGE)</span>
+                {carregandoCidades && <span className="text-[10px] text-purple-400 animate-pulse">Buscando IBGE...</span>}
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={config.cidade}
+                  onChange={(e) => setConfig({ ...config, cidade: e.target.value })}
+                  disabled={carregandoCidades}
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 shadow-inner disabled:opacity-60"
+                >
+                  {cidadesIBGE.length > 0 ? (
+                    cidadesIBGE.map((c) => (
+                      <option key={c.id} value={c.nome} className="bg-slate-900 text-slate-100">
+                        {c.nome}
+                      </option>
+                    ))
+                  ) : (
+                    <option value={config.cidade} className="bg-slate-900 text-slate-100">
+                      {config.cidade || "Carregando cidades..."}
+                    </option>
+                  )}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleAdicionarCidadeAlvo}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1 shrink-0 transition-colors"
+                  title="Adicionar à lista de varredura em lote"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1">
@@ -271,6 +364,36 @@ export function App() {
                 <option value="venda" className="bg-slate-900 text-slate-100">Venda</option>
                 <option value="aluguel" className="bg-slate-900 text-slate-100">Aluguel</option>
               </select>
+            </div>
+          </div>
+
+          {/* Lista de Cidades Alvo Salvas */}
+          <div className="pt-2 border-t border-slate-700/50 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+              <span>Cidades Alvo Salvas ({config.cidades_alvo?.length || 0}):</span>
+              <span className="text-[10px] text-purple-400 font-normal">Sincronizado remotamente</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+              {config.cidades_alvo && config.cidades_alvo.length > 0 ? (
+                config.cidades_alvo.map((alvo, idx) => (
+                  <span
+                    key={`${alvo.cidade}-${alvo.estado}-${idx}`}
+                    className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 text-slate-200 text-xs px-2.5 py-1 rounded-full shadow-sm"
+                  >
+                    <span className="font-semibold text-blue-400">📍 {alvo.cidade} ({alvo.estado})</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoverCidadeAlvo(idx)}
+                      className="text-slate-400 hover:text-red-400 transition-colors"
+                      title="Remover cidade da lista"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-slate-500 italic">Nenhuma cidade salva na lista em lote.</span>
+              )}
             </div>
           </div>
         </div>

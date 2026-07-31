@@ -8,9 +8,16 @@ use std::sync::Mutex;
 use tauri::State;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CidadeAlvo {
+    pub estado: String,
+    pub cidade: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub server_url: String,
     pub polling_schedules: Vec<String>, // Ex: ["08:00", "12:00", "16:00", "20:00"]
+    pub cidades_alvo: Option<Vec<CidadeAlvo>>,
     pub estado: String,
     pub cidade: String,
     pub tipo: String,
@@ -28,6 +35,12 @@ impl Default for AgentConfig {
                 "16:00".to_string(),
                 "20:00".to_string(),
             ],
+            cidades_alvo: Some(vec![
+                CidadeAlvo { estado: "CE".to_string(), cidade: "Juazeiro do Norte".to_string() },
+                CidadeAlvo { estado: "PE".to_string(), cidade: "Petrolina".to_string() },
+                CidadeAlvo { estado: "ES".to_string(), cidade: "São Mateus".to_string() },
+                CidadeAlvo { estado: "BA".to_string(), cidade: "Salvador".to_string() },
+            ]),
             estado: "ES".to_string(),
             cidade: "São Mateus".to_string(),
             tipo: "Casa".to_string(),
@@ -306,15 +319,60 @@ async fn execute_prospeccao_now(
         }
         None => state.config.lock().unwrap().clone(),
     };
+
     let mut logs = Vec::new();
-    let (items, target_url) = raspar_olx(
-        &active_config.estado,
-        &active_config.cidade,
-        &active_config.tipo,
-        &active_config.modalidade,
-        &mut logs
-    ).await;
-    enviar_para_servidor(&active_config, items, target_url, logs).await
+
+    let cidades_para_raspar = match &active_config.cidades_alvo {
+        Some(lista) if !lista.is_empty() => lista.clone(),
+        _ => vec![CidadeAlvo {
+            estado: active_config.estado.clone(),
+            cidade: active_config.cidade.clone(),
+        }],
+    };
+
+    logs.push(format!("🚀 Iniciando varredura em lote para {} cidade(s) alvo salvas...", cidades_para_raspar.len()));
+
+    let mut total_acumulado = 0;
+    let mut novos_acumulado = 0;
+    let mut removidos_acumulado = 0;
+    let mut last_batch_id = format!("desktop-{}", chrono::Utc::now().timestamp());
+    let mut last_target_url = "".to_string();
+
+    for (idx, alvo) in cidades_para_raspar.iter().enumerate() {
+        logs.push(format!("📍 [{}/{}] Processando Cidade Alvo: {} - {}", idx + 1, cidades_para_raspar.len(), alvo.cidade, alvo.estado));
+
+        let (items, target_url) = raspar_olx(
+            &alvo.estado,
+            &alvo.cidade,
+            &active_config.tipo,
+            &active_config.modalidade,
+            &mut logs
+        ).await;
+
+        last_target_url = target_url.clone();
+
+        let mut config_especifico = active_config.clone();
+        config_especifico.estado = alvo.estado.clone();
+        config_especifico.cidade = alvo.cidade.clone();
+
+        if let Ok(res) = enviar_para_servidor(&config_especifico, items, target_url, logs.clone()).await {
+            total_acumulado += res.total_encontrados;
+            novos_acumulado += res.novos_encontrados;
+            removidos_acumulado += res.removidos_encontrados;
+            last_batch_id = res.batch_id;
+        }
+    }
+
+    Ok(SyncResult {
+        success: true,
+        batch_id: last_batch_id,
+        target_url: last_target_url,
+        total_encontrados: total_acumulado,
+        novos_encontrados: novos_acumulado,
+        removidos_encontrados: removidos_acumulado,
+        logs,
+        message: format!("Prospecção concluída para {} cidades com sucesso!", cidades_para_raspar.len()),
+    })
 }
 
 fn main() {

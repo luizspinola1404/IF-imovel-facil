@@ -13,7 +13,7 @@ import { users } from "@shared/models/auth";
 import { scryptSync, randomBytes } from "crypto";
 import multer from "multer";
 import { ensureBucketExists, uploadImage, deleteObjects, isMinioUrl, extractKeyFromUrl } from "./minio";
-import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao, atualizarStatusLeadProspeccao } from "./services/prospeccao";
+import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao, atualizarStatusLeadProspeccao, listarCidadesAlvoProspeccao, salvarCidadesAlvoProspeccao } from "./services/prospeccao";
 
 // Helper function to hash passwords using Node.js crypto  
 function hashPassword(password: string): string {
@@ -436,6 +436,31 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Erro ao marcar lead:", err);
       res.status(500).json({ error: "Erro ao atualizar status do lead" });
+    }
+  });
+
+  app.get("/api/prospeccao/cidades-alvo", async (_req, res) => {
+    try {
+      const cidades = await listarCidadesAlvoProspeccao();
+      res.json({ cidades });
+    } catch (err) {
+      console.error("Erro ao listar cidades alvo:", err);
+      res.status(500).json({ error: "Erro ao listar cidades alvo" });
+    }
+  });
+
+  app.post("/api/prospeccao/cidades-alvo", async (req, res) => {
+    try {
+      const { cidades } = req.body || {};
+      if (!Array.isArray(cidades)) {
+        return res.status(400).json({ error: "Lista de cidades deve ser um array." });
+      }
+
+      await salvarCidadesAlvoProspeccao(cidades);
+      res.json({ ok: true, cidades, message: "Lista de cidades alvo salva com sucesso no servidor remoto!" });
+    } catch (err) {
+      console.error("Erro ao salvar cidades alvo:", err);
+      res.status(500).json({ error: "Erro ao salvar cidades alvo" });
     }
   });
 

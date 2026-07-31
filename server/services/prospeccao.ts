@@ -65,6 +65,14 @@ async function ensureTablesExist() {
         last_seen_at TIMESTAMP DEFAULT NOW(),
         last_batch_id TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS prospeccao_cidades_alvo (
+        id SERIAL PRIMARY KEY,
+        estado TEXT NOT NULL,
+        cidade TEXT NOT NULL,
+        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `);
     tablesChecked = true;
   } catch (err) {
@@ -276,4 +284,43 @@ export async function limparTodosLeadsProspeccao() {
   await ensureTablesExist();
   await pool.query("DELETE FROM prospeccao_leads");
   await pool.query("DELETE FROM prospeccao_batches");
+}
+
+/**
+ * Retorna a lista de cidades alvo salvas para prospecção remota.
+ */
+export async function listarCidadesAlvoProspeccao(): Promise<{ estado: string; cidade: string }[]> {
+  await ensureTablesExist();
+  const res = await pool.query(
+    "SELECT estado, cidade FROM prospeccao_cidades_alvo WHERE ativo = true ORDER BY id ASC"
+  );
+
+  if (res.rows.length === 0) {
+    // Cidades padrão caso não haja nenhuma cadastrada no banco
+    return [
+      { estado: "CE", cidade: "Juazeiro do Norte" },
+      { estado: "PE", cidade: "Petrolina" },
+      { estado: "ES", cidade: "São Mateus" },
+      { estado: "BA", cidade: "Salvador" },
+    ];
+  }
+
+  return res.rows.map((row: any) => ({ estado: row.estado, cidade: row.cidade }));
+}
+
+/**
+ * Salva e substitui a lista de cidades alvo no banco de dados remoto.
+ */
+export async function salvarCidadesAlvoProspeccao(cidades: { estado: string; cidade: string }[]) {
+  await ensureTablesExist();
+  await pool.query("DELETE FROM prospeccao_cidades_alvo");
+
+  for (const c of cidades) {
+    if (c.estado && c.cidade) {
+      await pool.query(
+        "INSERT INTO prospeccao_cidades_alvo (estado, cidade, ativo) VALUES ($1, $2, true)",
+        [c.estado.toUpperCase().trim(), c.cidade.trim()]
+      );
+    }
+  }
 }

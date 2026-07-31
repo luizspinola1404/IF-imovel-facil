@@ -184,10 +184,12 @@ export function ProspeccaoDirect() {
     );
   });
 
-  const leadsPorFonte = resultadosFiltrados.reduce((acc, lead) => {
-    const fonteKey = lead.fonte || "OLX Brasil (Particular)";
-    if (!acc[fonteKey]) acc[fonteKey] = [];
-    acc[fonteKey].push(lead);
+  const leadsPorGrupo = resultadosFiltrados.reduce((acc, lead) => {
+    const fonte = lead.fonte || "OLX Brasil (Particular)";
+    const local = lead.cidade && lead.estado ? `${lead.cidade}-${lead.estado}` : "Geral";
+    const grupoKey = `${fonte} — ${local}`;
+    if (!acc[grupoKey]) acc[grupoKey] = [];
+    acc[grupoKey].push(lead);
     return acc;
   }, {} as Record<string, ScraperResult[]>);
 
@@ -202,7 +204,7 @@ export function ProspeccaoDirect() {
         <div>
           <h2 className="text-xl font-bold">Imóveis Prospectados</h2>
           <p className="text-sm text-muted-foreground">
-            Lista de imóveis de proprietários particulares agrupados por fonte para gestão de contatos e prospecção.
+            Lista de imóveis de proprietários particulares divididos em acordeons por cidade e plataforma.
           </p>
         </div>
 
@@ -294,28 +296,28 @@ export function ProspeccaoDirect() {
 
           <Accordion
             type="multiple"
-            defaultValue={Object.keys(leadsPorFonte)}
+            defaultValue={Object.keys(leadsPorGrupo)}
             className="space-y-4"
           >
-            {Object.entries(leadsPorFonte).map(([fonteNome, leadsDaFonte]) => (
+            {Object.entries(leadsPorGrupo).map(([grupoNome, leadsDoGrupo]) => (
               <AccordionItem
-                key={fonteNome}
-                value={fonteNome}
+                key={grupoNome}
+                value={grupoNome}
                 className="bg-white border rounded-xl shadow-sm px-4 overflow-hidden border-slate-200"
               >
                 <AccordionTrigger className="hover:no-underline py-3.5">
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                      🟧 {fonteNome}
+                      📍 {grupoNome}
                     </span>
                     <Badge variant="secondary" className="bg-slate-100 text-slate-700 font-mono text-xs">
-                      {leadsDaFonte.length} imóveis
+                      {leadsDoGrupo.length} imóveis
                     </Badge>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-4">
                   <div className="grid gap-3">
-                    {leadsDaFonte.map((resultado, idx) => (
+                    {leadsDoGrupo.map((resultado, idx) => (
                       <div key={resultado.id} className="bg-slate-50/70 border rounded-lg p-4 hover:shadow-sm transition-shadow">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
