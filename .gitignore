@@ -11,6 +11,8 @@ test-results/
 playwright-report/
 playwright/.cache/
 
-# Rust
+# Rust & Tauri
 scraper/target/
 !scraper/target/release/scraper
+desktop-agent/src-tauri/target/
+desktop-agent/dist/

@@ -180,7 +180,7 @@ export function App() {
               value={config.server_url}
               onChange={(e) => setConfig({ ...config, server_url: e.target.value })}
               placeholder="https://luizspinolaimoveis.com.br"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-purple-500 shadow-inner"
             />
           </div>
           <p className="text-[11px] text-slate-500">
@@ -200,52 +200,54 @@ export function App() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Estado</label>
+              <label className="text-xs text-slate-400 font-medium">Estado</label>
               <select
                 value={config.estado}
                 onChange={(e) => setConfig({ ...config, estado: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 shadow-inner"
               >
                 {ESTADOS.map((uf) => (
-                  <option key={uf} value={uf}>{uf}</option>
+                  <option key={uf} value={uf} className="bg-slate-900 text-slate-100">
+                    {uf}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Cidade</label>
+              <label className="text-xs text-slate-400 font-medium">Cidade</label>
               <input
                 type="text"
                 value={config.cidade}
                 onChange={(e) => setConfig({ ...config, cidade: e.target.value })}
                 placeholder="Ex: São Mateus"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 shadow-inner"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Tipo de Imóvel</label>
+              <label className="text-xs text-slate-400 font-medium">Tipo de Imóvel</label>
               <select
                 value={config.tipo}
                 onChange={(e) => setConfig({ ...config, tipo: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 shadow-inner"
               >
-                <option value="Casa">Casa</option>
-                <option value="Apartamento">Apartamento</option>
-                <option value="Terreno">Terreno</option>
-                <option value="Comercial">Comercial</option>
+                <option value="Casa" className="bg-slate-900 text-slate-100">Casa</option>
+                <option value="Apartamento" className="bg-slate-900 text-slate-100">Apartamento</option>
+                <option value="Terreno" className="bg-slate-900 text-slate-100">Terreno</option>
+                <option value="Comercial" className="bg-slate-900 text-slate-100">Comercial</option>
               </select>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Modalidade</label>
+              <label className="text-xs text-slate-400 font-medium">Modalidade</label>
               <select
                 value={config.modalidade}
                 onChange={(e) => setConfig({ ...config, modalidade: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500 shadow-inner"
               >
-                <option value="venda">Venda</option>
-                <option value="aluguel">Aluguel</option>
+                <option value="venda" className="bg-slate-900 text-slate-100">Venda</option>
+                <option value="aluguel" className="bg-slate-900 text-slate-100">Aluguel</option>
               </select>
             </div>
           </div>
@@ -275,7 +277,7 @@ export function App() {
               placeholder="Adicionar HH:MM (ex: 14:00)"
               value={novoHorario}
               onChange={(e) => setNovoHorario(e.target.value)}
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-purple-500 shadow-inner"
             />
             <button
               onClick={handleAdicionarHorario}
