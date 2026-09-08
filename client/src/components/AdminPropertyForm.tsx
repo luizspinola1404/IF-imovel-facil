@@ -29,6 +29,8 @@ import { z } from "zod";
 // Extend schema to handle strings from inputs that should be numbers
 const formSchema = insertPropertySchema.extend({
   price: z.coerce.string(), // Handle decimal as string to match API schema
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(1, "Estado é obrigatório"),
   bedrooms: z.coerce.number(),
   bathrooms: z.coerce.number(),
   area: z.coerce.number(),
@@ -52,6 +54,17 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
   const [uploading, setUploading] = useState(false);
   const [hasUnsavedImages, setHasUnsavedImages] = useState(false);
 
+  const initialCity = property?.city || "Juazeiro";
+  const initialState = property?.state || "BA";
+  
+  const getInitialPreset = (c: string, s: string) => {
+    if (c === "Juazeiro" && s === "BA") return "Juazeiro-BA";
+    if (c === "Petrolina" && s === "PE") return "Petrolina-PE";
+    return "custom";
+  };
+
+  const [cityPreset, setCityPreset] = useState<string>(getInitialPreset(initialCity, initialState));
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -61,6 +74,8 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
       category: property?.category || "house",
       price: property?.price ? String(property.price) : "0",
       neighborhood: property?.neighborhood || "",
+      city: initialCity,
+      state: initialState,
       bedrooms: property?.bedrooms || 0,
       bathrooms: property?.bathrooms || 0,
       area: property?.area || 0,
@@ -202,6 +217,32 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
             )}
           />
 
+          <FormItem>
+            <FormLabel>Cidade / Estado</FormLabel>
+            <Select
+              value={cityPreset}
+              onValueChange={(val) => {
+                setCityPreset(val);
+                if (val === "Juazeiro-BA") {
+                  form.setValue("city", "Juazeiro");
+                  form.setValue("state", "BA");
+                } else if (val === "Petrolina-PE") {
+                  form.setValue("city", "Petrolina");
+                  form.setValue("state", "PE");
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a cidade" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Juazeiro-BA">Juazeiro - BA</SelectItem>
+                <SelectItem value="Petrolina-PE">Petrolina - PE</SelectItem>
+                <SelectItem value="custom">Outra Cidade...</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormItem>
+
           <FormField
             control={form.control}
             name="neighborhood"
@@ -215,6 +256,37 @@ export function AdminPropertyForm({ property, onSuccess }: AdminPropertyFormProp
               </FormItem>
             )}
           />
+
+          {cityPreset === "custom" && (
+            <>
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome da Cidade</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: Juazeiro" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="state"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado (UF)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: BA" maxLength={2} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
 
           <div className="grid grid-cols-3 gap-2 col-span-2">
             <FormField

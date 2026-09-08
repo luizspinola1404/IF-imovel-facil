@@ -30,10 +30,10 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   if (userId) {
     const user = await authStorage.getUser(userId);
     if (user) {
-      req.user = { 
+      (req as any).user = { 
         claims: { sub: userId }, 
         expires_at: Math.floor(Date.now() / 1000) + 24 * 60 * 60 
-      } as any;
+      };
       return next();
     }
   }

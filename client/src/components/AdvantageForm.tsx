@@ -88,7 +88,7 @@ export function AdvantageForm({ advantage, onSuccess, onCancel }: AdvantageFormP
             <FormItem>
               <FormLabel>Descrição (opcional)</FormLabel>
               <FormControl>
-                <Textarea placeholder="Descreva a vantagem..." rows={3} {...field} />
+                <Textarea placeholder="Descreva a vantagem..." rows={3} {...field} value={field.value || ""} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -102,7 +102,7 @@ export function AdvantageForm({ advantage, onSuccess, onCancel }: AdvantageFormP
             <FormItem>
               <FormLabel>Ícone/Emoji (opcional)</FormLabel>
               <FormControl>
-                <Input placeholder="Ex: 🏊 ou Pool" {...field} />
+                <Input placeholder="Ex: 🏊 ou Pool" {...field} value={field.value || ""} />
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -23,6 +23,8 @@ export const api = {
         type: z.enum(['sale', 'rent']).optional(),
         category: z.string().optional(),
         neighborhood: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
         minPrice: z.coerce.number().optional(),
         maxPrice: z.coerce.number().optional(),
         bedrooms: z.coerce.number().optional(),

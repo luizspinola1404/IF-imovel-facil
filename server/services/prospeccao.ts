@@ -386,3 +386,5 @@ export async function salvarConfigProspeccaoServidor(data: {
     );
   }
 }
+
+export { listarLeadsProspeccao as buscarImoveisProspeccao };

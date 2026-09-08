@@ -43,6 +43,8 @@ export async function registerRoutes(
       type: req.query.type as string,
       category: req.query.category as string,
       neighborhood: req.query.neighborhood as string,
+      city: req.query.city as string,
+      state: req.query.state as string,
       minPrice: req.query.minPrice ? Number(req.query.minPrice) : undefined,
       maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : undefined,
       bedrooms: req.query.bedrooms ? Number(req.query.bedrooms) : undefined,

@@ -87,7 +87,8 @@ export default function Dashboard() {
   const filteredProperties = properties?.filter(
     (p) =>
       p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.neighborhood.toLowerCase().includes(searchTerm.toLowerCase()),
+      p.neighborhood.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.city && p.city.toLowerCase().includes(searchTerm.toLowerCase())),
   );
 
   const handleEdit = (property: Property) => {
@@ -219,7 +220,7 @@ export default function Dashboard() {
                       <TableHead>Tipo</TableHead>
                       <TableHead>Preço</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Bairro</TableHead>
+                      <TableHead>Localização</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -291,7 +292,7 @@ export default function Dashboard() {
                                   : "Alugado"}
                             </Badge>
                           </TableCell>
-                          <TableCell>{property.neighborhood}</TableCell>
+                          <TableCell>{property.neighborhood}, {property.city || "Juazeiro"}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               <Button

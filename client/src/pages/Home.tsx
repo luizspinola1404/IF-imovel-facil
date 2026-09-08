@@ -19,6 +19,7 @@ export default function Home() {
   const [filters, setFilters] = useState({
     type: "sale",
     category: "",
+    city: "",
     neighborhood: "",
   });
 
@@ -63,9 +64,9 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="bg-white p-4 rounded-2xl shadow-2xl max-w-4xl mx-auto"
+            className="bg-white p-4 rounded-2xl shadow-2xl max-w-5xl mx-auto"
           >
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-muted-foreground ml-1">
                   O que você busca?
@@ -92,6 +93,28 @@ export default function Home() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-muted-foreground ml-1">
+                  Cidade
+                </label>
+                <Select
+                  onValueChange={(val) =>
+                    setFilters({
+                      ...filters,
+                      city: val === "all" ? "" : val,
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-11 border-border/50 bg-secondary/20">
+                    <SelectValue placeholder="Todas as cidades" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as cidades</SelectItem>
+                    <SelectItem value="Juazeiro">Juazeiro - BA</SelectItem>
+                    <SelectItem value="Petrolina">Petrolina - PE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-muted-foreground ml-1">
@@ -173,7 +196,7 @@ export default function Home() {
             <Button
               variant="ghost"
               onClick={() =>
-                setFilters({ type: "sale", category: "", neighborhood: "" })
+                setFilters({ type: "sale", category: "", city: "", neighborhood: "" })
               }
             >
               Limpar filtros

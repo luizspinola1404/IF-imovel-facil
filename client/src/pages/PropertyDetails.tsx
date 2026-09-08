@@ -126,7 +126,7 @@ export default function PropertyDetails() {
             <div className="flex items-center text-muted-foreground">
               <MapPin className="h-4 w-4 mr-1.5" />
               <span className="text-lg">
-                {property.neighborhood}, Juazeiro - BA
+                {property.neighborhood}, {property.city || "Juazeiro"} - {property.state || "BA"}
               </span>
             </div>
           </div>

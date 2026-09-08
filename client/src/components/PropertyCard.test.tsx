@@ -19,6 +19,8 @@ describe("PropertyCard", () => {
     category: "house",
     price: "450000",
     neighborhood: "Centro",
+    city: "Juazeiro",
+    state: "BA",
     bedrooms: 3,
     bathrooms: 2,
     area: 150,

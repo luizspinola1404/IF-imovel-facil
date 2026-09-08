@@ -11,6 +11,8 @@ export const properties = pgTable("properties", {
   category: text("category").notNull(), // 'house', 'apartment', 'commercial', 'land'
   price: decimal("price").notNull(),
   neighborhood: text("neighborhood").notNull(),
+  city: text("city").notNull().default('Juazeiro'),
+  state: text("state").notNull().default('BA'),
   bedrooms: integer("bedrooms").notNull(),
   bathrooms: integer("bathrooms").notNull(),
   area: real("area").notNull(), // m² (permite decimais/ponto flutuante)

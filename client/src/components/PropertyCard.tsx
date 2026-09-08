@@ -54,7 +54,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
         
         <div className="flex items-center text-muted-foreground text-sm mb-4">
           <MapPin className="h-3.5 w-3.5 mr-1 text-primary" />
-          <span className="truncate">{property.neighborhood}, Juazeiro</span>
+          <span className="truncate">{property.neighborhood}, {property.city || "Juazeiro"}</span>
         </div>
 
         <div className="grid grid-cols-3 gap-2 py-3 border-t border-dashed border-border text-sm text-muted-foreground">
