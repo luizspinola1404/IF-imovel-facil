@@ -1,28 +1,25 @@
 # Plano de Resolução de Bug (.agents/bug_resolution_plan.md)
 
 ## Descrição do Bug
-- **Sintoma**: O projeto Firebase `imoviu-a1fc6` (e URL `https://imoviu-a1fc6.firebaseapp.com/`) foi indevidamente associado ao projeto `LysiaTalkOficial` em arquivos de documentação/configuração anteriores, quando na verdade `imoviu-a1fc6` é o projeto do **Imóvel Fácil / IMOVIU** (plataforma de divulgação de imóveis via QR Code & NFC).
+- **Sintoma**: O projeto Firebase `imoviu-a1fc6` estava indevidamente associado ao projeto `imoviu` (fork), quando na verdade `imoviu-a1fc6` pertence **exclusivamente** ao **Imóvel Fácil (`IF-imovel-facil`)** (`https://imoviu-a1fc6.firebaseapp.com/`).
 - **Comportamento Esperado**: 
-  - `LysiaTalkOficial` deve usar **exclusivamente** o projeto GCP/Firebase `claus-7b33d`.
-  - `Imoviu` / `IF-imovel-facil` deve usar **exclusivamente** o projeto GCP/Firebase `imoviu-a1fc6`.
+  - `IF-imovel-facil` mantém a posse exclusiva do GCP/Firebase `imoviu-a1fc6` e do Cloud Run `imovel-facil-backend`.
+  - `imoviu` (fork) utilizará um projeto GCP/Firebase próprio e dedicado a ser definido/criado.
 
 ## Causa Raiz Identificada
-- Configurações antigas do arquivo `AGENTS.md` (no repositório IF-imovel-facil) misturavam informações do LysiaTalk e do Imoviu, gerando confusão de infraestrutura onde o `imoviu-a1fc6` foi incorretamente citado como se fosse infraestrutura do LysiaTalk.
+- Houve uma sobreposição nos arquivos de configuração ao atribuir o `imoviu-a1fc6` para o novo projeto Imoviu.
 
 ## Abordagens Tentadas/Consideradas
-- Associação de `imoviu-a1fc6` com LysiaTalk (Falhou - Incorreto).
-- Re-mapeamento completo da infraestrutura de cada projeto em seus respectivos repositórios e documentações (Solução Proposta).
+- Compartilhar `imoviu-a1fc6` entre ambos os projetos (Descartado - O Imóvel Fácil é o dono do `imoviu-a1fc6`).
+- Manter `imoviu-a1fc6` 100% exclusivo no Imóvel Fácil e desvincular do Imoviu (Solução Adotada).
 
 ## Plano de Ação Passo a Passo
 
-1. **Ajustar `IF-imovel-facil/.agents/AGENTS.md`**:
-   - Remover qualquer menção ao projeto `LysiaTalkOficial` ou `claus-7b33d`.
-   - Definir claramente o contexto do **Imóvel Fácil / IMOVIU** associado ao GCP `imoviu-a1fc6`.
-   - Mapear o serviço Cloud Run `imovel-facil-backend` (existente na região `southamerica-east1`) e o novo serviço `imoviu-backend`.
+1. **Fixar `IF-imovel-facil` no Firebase `imoviu-a1fc6`**:
+   - Atualizado `.agents/AGENTS.md` no Imóvel Fácil definindo a posse exclusiva do `imoviu-a1fc6` e Cloud Run `imovel-facil-backend`.
 
-2. **Ajustar `imoviu/.agents/AGENTS.md` e `imoviu/firebase.json`**:
-   - Garantir que o repositório `/home/claus/src/imoviu` esteja 100% vinculado ao `imoviu-a1fc6`.
-   - Manter a separação total entre os projetos `imoviu` (GCP: `imoviu-a1fc6`) e `LysiaTalk` (GCP: `claus-7b33d`).
+2. **Desvincular `imoviu-a1fc6` do Fork Imoviu**:
+   - Atualizar a documentação do projeto `/home/claus/src/imoviu` para aguardar a definição do novo ID de projeto Firebase/GCP dedicado ao Imoviu.
 
 3. **Validação**:
-   - Confirmar se a documentação e os arquivos de configuração de ambos os projetos refletem a separação estrita de infraestrutura.
+   - Confirmar que o Imóvel Fácil é o único responsável pelo `imoviu-a1fc6` e seu Firebase Hosting `https://imoviu-a1fc6.firebaseapp.com/`.
