@@ -117,7 +117,10 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap justify-end">
-            <a href="/api/desktop-binary/download" target="_blank" rel="noopener noreferrer">
+            <a
+              href="/api/desktop-binary/download"
+              download="IF-Prospeccao-Agent-Windows.exe"
+            >
               <Button
                 variant="outline"
                 className="border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100 gap-2 font-medium"

@@ -16,3 +16,7 @@ scraper/target/
 !scraper/target/release/scraper
 desktop-agent/src-tauri/target/
 desktop-agent/dist/
+.venv/
+.firebase/
+*.sqltarget/
+imoviu_app/target/

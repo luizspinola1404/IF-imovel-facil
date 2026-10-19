@@ -5,12 +5,9 @@ import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { eq, sql } from "drizzle-orm";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { authStorage } from "./replit_integrations/auth/storage";
-import { db } from "./db";
-import { users } from "@shared/models/auth";
-import { scryptSync, randomBytes } from "crypto";
+import { scryptSync, randomBytes, randomUUID } from "crypto";
 import multer from "multer";
 import { ensureBucketExists, uploadImage, deleteObjects, isMinioUrl, extractKeyFromUrl } from "./minio";
 import { sincronizarLoteProspeccao, listarLeadsProspeccao, excluirLeadProspeccao, limparTodosLeadsProspeccao, atualizarStatusLeadProspeccao, listarCidadesAlvoProspeccao, salvarCidadesAlvoProspeccao, obterConfigProspeccaoServidor, salvarConfigProspeccaoServidor } from "./services/prospeccao";
@@ -26,12 +23,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Ensure existing database properties table converts 'area' column to float (real) safely
-  try {
-    await db.execute(sql`ALTER TABLE properties ALTER COLUMN area TYPE real USING area::real;`);
-  } catch {
-    // Ignore if column already converted or table does not exist yet
-  }
 
   // Setup Auth
   await setupAuth(app);
@@ -290,7 +281,7 @@ export async function registerRoutes(
   }
 
   app.get("/api/admin/users", isAuthenticated, ensureAdmin, async (_req, res) => {
-    const all = await db.select().from(users).orderBy(users.createdAt);
+    const all = await authStorage.listUsers();
     res.json(all.map((u) => ({ id: u.id, email: u.email, firstName: u.firstName, lastName: u.lastName, role: (u as any).role })));
   });
 
@@ -302,11 +293,16 @@ export async function registerRoutes(
       if (password) {
         passwordHash = hashPassword(password);
       }
-      const inserted = await db
-        .insert(users)
-        .values({ email, firstName, lastName, role: role || "user", username, passwordHash } as any)
-        .returning();
-      res.status(201).json(inserted[0]);
+      const inserted = await authStorage.upsertUser({
+        id: randomUUID(),
+        email,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        role: role || "user",
+        username: username || null,
+        passwordHash: passwordHash || null,
+      });
+      res.status(201).json(inserted);
     } catch (err) {
       res.status(500).json({ message: "failed to create user" });
     }
@@ -321,13 +317,13 @@ export async function registerRoutes(
       updates.passwordHash = hashPassword(password);
     }
     if (!Object.keys(updates).length) return res.status(400).json({ message: "role or password required" });
-    await db.update(users).set(updates).where(eq(users.id, id));
+    await authStorage.updateUser(id, updates);
     res.json({ ok: true });
   });
 
   app.delete("/api/admin/users/:id", isAuthenticated, ensureAdmin, async (req, res) => {
     const id = req.params.id;
-    await db.delete(users).where(eq(users.id, id));
+    await authStorage.deleteUser(id);
     res.json({ ok: true });
   });
 
@@ -345,22 +341,20 @@ export async function registerRoutes(
       }
 
       const passwordHash = hashPassword(password);
-      const inserted = await db
-        .insert(users)
-        .values({
-          username,
-          email,
-          passwordHash,
-          firstName: firstName || null,
-          lastName: lastName || null,
-          role: role || "admin",
-        } as any)
-        .returning();
+      const inserted = await authStorage.upsertUser({
+        id: randomUUID(),
+        username,
+        email,
+        passwordHash,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        role: role || "admin",
+      });
       
       res.status(201).json({ 
         ok: true, 
         message: "User registered successfully", 
-        user: { id: inserted[0].id, username: inserted[0].username, role: inserted[0].role } 
+        user: { id: inserted.id, username: inserted.username, role: inserted.role } 
       });
     } catch (err) {
       console.error("Secret registration error:", err);
@@ -521,10 +515,10 @@ export async function registerRoutes(
 
 async function ensureAdminUser() {
   try {
-    const [existingAdmin] = await db.select().from(users).where(eq(users.username, "admin"));
+    const existingAdmin = await authStorage.getUserByIdentifier("admin");
     if (existingAdmin) {
       if (existingAdmin.role !== "admin") {
-        await db.update(users).set({ role: "admin" }).where(eq(users.username, "admin"));
+        await authStorage.updateUser(existingAdmin.id, { role: "admin" });
         console.log("Enforced 'admin' role for default 'admin' user");
       } else {
         console.log("Admin user 'admin' already exists with correct role");
@@ -535,16 +529,15 @@ async function ensureAdminUser() {
     const password = process.env.ADMIN_PASSWORD || "admin123";
     const passwordHash = hashPassword(password);
 
-    await db
-      .insert(users)
-      .values({
-        username: "admin",
-        email: "admin@local",
-        firstName: "Admin",
-        lastName: "Local",
-        role: "admin",
-        passwordHash,
-      });
+    await authStorage.upsertUser({
+      id: randomUUID(),
+      username: "admin",
+      email: "admin@local",
+      firstName: "Admin",
+      lastName: "Local",
+      role: "admin",
+      passwordHash,
+    });
 
     console.log(`Created default admin 'admin' (${process.env.ADMIN_PASSWORD ? 'ADMIN_PASSWORD' : 'admin123'})`);
   } catch (err) {

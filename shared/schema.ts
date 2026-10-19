@@ -111,6 +111,8 @@ export const prospeccaoLeads = pgTable("prospeccao_leads", {
   firstSeenAt: timestamp("first_seen_at").defaultNow(),
   lastSeenAt: timestamp("last_seen_at").defaultNow(),
   lastBatchId: text("last_batch_id"),
+  publishedAt: timestamp("published_at"),
+  dataPublicacaoRaw: text("data_publicacao_raw"),
 });
 
 export const insertPropertySchema = createInsertSchema(properties).omit({ id: true, createdAt: true });

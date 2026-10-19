@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{Emitter, State};
 use headless_chrome::{Browser, LaunchOptionsBuilder};
+use chrono::{Datelike, Timelike};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CidadeAlvo {
@@ -63,6 +64,8 @@ pub struct ScrapedItem {
     pub fonte: String,
     pub trecho: String,
     pub direto_proprietario: bool,
+    pub published_at: Option<String>,
+    pub data_publicacao_raw: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +184,81 @@ fn registrar_log(app: &tauri::AppHandle, logs: &mut Vec<String>, msg: String) {
     }
 }
 
+fn parse_olx_date(raw_str: &str) -> (Option<String>, Option<String>) {
+    let raw = raw_str.trim();
+    if raw.is_empty() {
+        return (None, None);
+    }
+
+    let clean = raw.to_lowercase();
+    let now = chrono::Local::now();
+
+    if clean.contains("hoje") {
+        let re_time = regex::Regex::new(r#"(\d{1,2}):(\d{2})"#).unwrap();
+        let (h, min) = if let Some(cap) = re_time.captures(&clean) {
+            (
+                cap.get(1).unwrap().as_str().parse::<u32>().unwrap_or(now.hour()),
+                cap.get(2).unwrap().as_str().parse::<u32>().unwrap_or(now.minute()),
+            )
+        } else {
+            (now.hour(), now.minute())
+        };
+        if let Some(dt) = now.with_hour(h).and_then(|d| d.with_minute(min)).and_then(|d| d.with_second(0)) {
+            return (Some(dt.to_rfc3339()), Some(raw.to_string()));
+        }
+    } else if clean.contains("ontem") {
+        let re_time = regex::Regex::new(r#"(\d{1,2}):(\d{2})"#).unwrap();
+        let (h, min) = if let Some(cap) = re_time.captures(&clean) {
+            (
+                cap.get(1).unwrap().as_str().parse::<u32>().unwrap_or(now.hour()),
+                cap.get(2).unwrap().as_str().parse::<u32>().unwrap_or(now.minute()),
+            )
+        } else {
+            (now.hour(), now.minute())
+        };
+        let yesterday = now - chrono::Duration::days(1);
+        if let Some(dt) = yesterday.with_hour(h).and_then(|d| d.with_minute(min)).and_then(|d| d.with_second(0)) {
+            return (Some(dt.to_rfc3339()), Some(raw.to_string()));
+        }
+    } else {
+        let re_fixed = regex::Regex::new(r#"(\d{1,2})\s*(?:de)?\s*([a-z]{3,9})\.?\s*,?\s*(?:(\d{1,2}):(\d{2}))?"#).unwrap();
+        if let Some(cap) = re_fixed.captures(&clean) {
+            let day: u32 = cap.get(1).unwrap().as_str().parse().unwrap_or(1);
+            let mes_str = cap.get(2).unwrap().as_str();
+            let month = match mes_str {
+                "jan" | "janeiro" => 1,
+                "fev" | "fevereiro" => 2,
+                "mar" | "março" | "marco" => 3,
+                "abr" | "abril" => 4,
+                "mai" | "maio" => 5,
+                "jun" | "junho" => 6,
+                "jul" | "julho" => 7,
+                "ago" | "agosto" => 8,
+                "set" | "setembro" => 9,
+                "out" | "outubro" => 10,
+                "nov" | "novembro" => 11,
+                "dez" | "dezembro" => 12,
+                _ => now.month(),
+            };
+            let h: u32 = cap.get(3).map_or(12, |m| m.as_str().parse().unwrap_or(12));
+            let min: u32 = cap.get(4).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+            let mut year = now.year();
+            if month > now.month() {
+                year -= 1;
+            }
+            if let Some(naive_date) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
+                if let Some(naive_dt) = naive_date.and_hms_opt(h, min, 0) {
+                    if let Some(dt) = naive_dt.and_local_timezone(chrono::Local).single() {
+                        return (Some(dt.to_rfc3339()), Some(raw.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    (None, if raw.is_empty() { None } else { Some(raw.to_string()) })
+}
+
 async fn raspar_olx(
     app: &tauri::AppHandle,
     estado: &str,
@@ -270,6 +348,7 @@ async fn raspar_olx(
 
     let re_href = regex::Regex::new(r#"href="(https://[a-z0-9\.-]*olx\.com\.br/[^"]*?-\d+)""#).unwrap();
     let re_all = regex::Regex::new(r#"https://[a-z0-9\.-]*olx\.com\.br/[^"'\s\?]*?-\d+"#).unwrap();
+    let re_date = regex::Regex::new(r#"olx-adcard__date[^>]*>([^<]+)<"#).unwrap();
 
     for pagina in 1..=max_paginas {
         let html_pagina = if pagina == 1 {
@@ -302,6 +381,8 @@ async fn raspar_olx(
         }
 
         let mut novos_na_pagina = 0;
+        let re_card_title = regex::Regex::new(r#"olx-adcard__title[^>]*>([^<]+)<"#).unwrap();
+
         for link in matches {
             if !seen.contains(&link) && !link.ends_with(".png") && !link.ends_with(".jpg") && !link.ends_with(".ico") {
                 seen.insert(link.clone());
@@ -312,7 +393,7 @@ async fn raspar_olx(
                     .map(|(t, _)| t.replace('-', " "))
                     .unwrap_or_else(|| format!("Imóvel Particular em {}-{}", cidade, estado));
 
-                let titulo = raw_title.chars().enumerate().map(|(i, c)| {
+                let slug_formatted_title = raw_title.chars().enumerate().map(|(i, c)| {
                     if i == 0 || raw_title.chars().nth(i.saturating_sub(1)).map_or(false, |p| p == ' ') {
                         c.to_uppercase().next().unwrap_or(c)
                     } else {
@@ -322,6 +403,25 @@ async fn raspar_olx(
 
                 let id = format!("olx-{}", slug);
 
+                let link_pos = html_pagina.find(&link).unwrap_or(0);
+                let window_start = link_pos.saturating_sub(1000);
+                let window_end = (link_pos + 6500).min(html_pagina.len());
+                let window = &html_pagina[window_start..window_end];
+
+                let titulo = if let Some(cap) = re_card_title.captures(window) {
+                    cap.get(1).map(|m| m.as_str().trim().to_string()).unwrap_or(slug_formatted_title)
+                } else {
+                    slug_formatted_title
+                };
+
+                let data_raw = if let Some(cap) = re_date.captures(window) {
+                    cap.get(1).map(|m| m.as_str().trim().to_string()).unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
+                let (published_at, data_publicacao_raw) = parse_olx_date(&data_raw);
+
                 todos_os_items.push(ScrapedItem {
                     id,
                     titulo,
@@ -329,6 +429,8 @@ async fn raspar_olx(
                     fonte: "OLX Brasil (Particular)".to_string(),
                     trecho: format!("Imóvel de proprietário particular capturado em {}-{}.", cidade, estado),
                     direto_proprietario: true,
+                    published_at,
+                    data_publicacao_raw,
                 });
             }
         }

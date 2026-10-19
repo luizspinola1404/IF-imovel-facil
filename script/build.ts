@@ -37,6 +37,9 @@ async function buildAll() {
 
   console.log("building client...");
   await viteBuild();
+  const { copyFile, unlink } = await import("fs/promises");
+  await copyFile("dist/public/index.html", "dist/public/app.html");
+  await unlink("dist/public/index.html");
 
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));

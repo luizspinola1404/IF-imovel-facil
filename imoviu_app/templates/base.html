@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Imoviu - Divulgação Inteligente{% endblock %}</title>
+
+    <!-- Google Fonts: Inter e Outfit (Identidade Imóvel Fácil) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef6ff',
+                            100: '#e0edff',
+                            500: '#0052cc',
+                            600: '#003B96', // Deep Royal Blue do Imóvel Fácil
+                            700: '#002c73',
+                            900: '#0a192f',
+                        },
+                        gold: {
+                            400: '#fbbf24',
+                            500: '#F59E0B', // Accent Gold Imóvel Fácil
+                            600: '#d97706',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        .glass-card {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn-gold-glow {
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
+        }
+        .btn-gold-glow:hover {
+            box-shadow: 0 0 30px rgba(245, 158, 11, 0.55);
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="h-full font-sans antialiased flex flex-col justify-between selection:bg-gold-500 selection:text-slate-900">
+    {% block content %}{% endblock %}
+
+    <footer class="py-6 text-center text-xs text-slate-500 border-t border-slate-800 bg-slate-950/80">
+        <p>Tecnologia <strong>Imoviu</strong> &bull; Conectado ao <span class="text-brand-500 font-semibold">Imóvel Fácil</span></p>
+    </footer>
+</body>
+</html>

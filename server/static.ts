@@ -11,6 +11,7 @@ export function serveStatic(app: Express) {
   }
 
   app.use(express.static(distPath, {
+    index: false,
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('.html')) {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -18,9 +19,11 @@ export function serveStatic(app: Express) {
     }
   }));
 
-  // fall through to index.html if the file doesn't exist
+  const htmlFile = fs.existsSync(path.resolve(distPath, "app.html")) ? "app.html" : "index.html";
+
+  // fall through to SPA html if the file doesn't exist
   app.use("*", (_req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.sendFile(path.resolve(distPath, "index.html"));
+    res.sendFile(path.resolve(distPath, htmlFile));
   });
 }

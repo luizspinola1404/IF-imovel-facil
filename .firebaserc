@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "imoviu-a1fc6"
-  }
+  },
+  "targets": {
+    "imoviu-a1fc6": {
+      "hosting": {
+        "imovel-facil": [
+          "imoviu-a1fc6"
+        ],
+        "imoviu": [
+          "imoviu-app"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

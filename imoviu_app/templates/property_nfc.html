@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}{{ property.title }} | Imoviu - Placa Inteligente{% endblock %}
+
+{% block content %}
+<main class="max-w-md mx-auto w-full pb-12 px-4 pt-6 space-y-6">
+
+    <!-- Card Topo: Conexão NFC / QR Code Ativa -->
+    <div class="flex items-center justify-between bg-brand-600/20 border border-brand-500/30 rounded-2xl px-4 py-2.5 text-xs text-brand-100">
+        <div class="flex items-center space-x-2">
+            <span class="relative flex h-2.5 w-2.5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span class="font-medium tracking-wide">Tag NFC / QR Code Verificado</span>
+        </div>
+        <div class="flex items-center space-x-1 font-bold text-gold-400">
+            <i class="fa-solid fa-shield-halved text-xs"></i>
+            <span>IMÓVEL FÁCIL</span>
+        </div>
+    </div>
+
+    <!-- Perfil do Dono/Corretor & Mídias Sociais -->
+    <div class="glass-card rounded-3xl p-6 text-center shadow-2xl relative overflow-hidden">
+        <!-- Banner de Fundo Decorativo -->
+        <div class="absolute top-0 left-0 right-0 h-24 bg-gradient-to-r from-brand-700 via-brand-600 to-brand-900 opacity-80"></div>
+        
+        <div class="relative z-10 pt-4">
+            <div class="relative inline-block">
+                <img src="{{ owner.avatar }}" alt="{{ owner.name }}" class="w-24 h-24 rounded-full mx-auto object-cover border-4 border-slate-900 shadow-xl">
+                <span class="absolute bottom-1 right-1 bg-gold-500 text-slate-950 p-1.5 rounded-full text-xs shadow-md" title="Proprietário/Corretor Verificado">
+                    <i class="fa-solid fa-check"></i>
+                </span>
+            </div>
+
+            <h1 class="text-xl font-bold font-display text-white mt-3">{{ owner.name }}</h1>
+            <p class="text-xs text-slate-400 font-medium">{{ owner.role }} &bull; {{ owner.creci }}</p>
+
+            <!-- Redes Sociais & Contato Direto -->
+            <div class="mt-5 grid grid-cols-4 gap-3">
+                {% if owner.whatsapp %}
+                <a href="https://wa.me/{{ owner.whatsapp }}?text=Olá,%20vi%20o%20anúncio%20do%20imóvel%20{{ property.title }}%20pelo%20QR%20Code/NFC!" target="_blank" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-400 transition-all hover:scale-105 group">
+                    <i class="fa-brands fa-whatsapp text-xl group-hover:scale-110 transition-transform"></i>
+                    <span class="text-[10px] font-medium mt-1">WhatsApp</span>
+                </a>
+                {% endif %}
+
+                {% if owner.instagram %}
+                <a href="https://instagram.com/{{ owner.instagram }}" target="_blank" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-pink-600/20 hover:bg-pink-600/30 border border-pink-500/30 text-pink-400 transition-all hover:scale-105 group">
+                    <i class="fa-brands fa-instagram text-xl group-hover:scale-110 transition-transform"></i>
+                    <span class="text-[10px] font-medium mt-1">Instagram</span>
+                </a>
+                {% endif %}
+
+                {% if owner.phone %}
+                <a href="tel:{{ owner.phone }}" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-brand-600/20 hover:bg-brand-600/30 border border-brand-500/30 text-brand-300 transition-all hover:scale-105 group">
+                    <i class="fa-solid fa-phone text-lg group-hover:scale-110 transition-transform"></i>
+                    <span class="text-[10px] font-medium mt-1">Ligar</span>
+                </a>
+                {% endif %}
+
+                {% if owner.email %}
+                <a href="mailto:{{ owner.email }}" class="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-700/30 hover:bg-slate-700/50 border border-slate-600/30 text-slate-300 transition-all hover:scale-105 group">
+                    <i class="fa-solid fa-envelope text-lg group-hover:scale-110 transition-transform"></i>
+                    <span class="text-[10px] font-medium mt-1">E-mail</span>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Card do Imóvel Divulgado -->
+    <div class="glass-card rounded-3xl overflow-hidden shadow-2xl space-y-4">
+        <div class="relative h-56 w-full">
+            <img src="{{ property.cover_image }}" alt="{{ property.title }}" class="w-full h-full object-cover">
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
+            
+            <div class="absolute top-3 left-3 bg-brand-600 text-white font-bold text-xs px-3 py-1.5 rounded-full shadow-lg">
+                {{ property.type }}
+            </div>
+
+            <div class="absolute bottom-3 left-4 right-4 flex items-end justify-between">
+                <div>
+                    <p class="text-xs text-slate-300 font-medium flex items-center gap-1">
+                        <i class="fa-solid fa-location-dot text-gold-400"></i> {{ property.city }}
+                    </p>
+                    <h2 class="text-lg font-bold text-white font-display leading-snug">{{ property.title }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-5 pt-0 space-y-4">
+            <!-- Valor do Imóvel -->
+            <div class="flex items-center justify-between bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800">
+                <span class="text-xs text-slate-400 uppercase font-semibold tracking-wider">Valor de Venda</span>
+                <span class="text-xl font-extrabold text-gold-400 font-display">R$ {{ property.price }}</span>
+            </div>
+
+            <!-- Especificações Rápidas -->
+            <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                <div class="bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
+                    <i class="fa-solid fa-bed text-brand-400 block text-base mb-1"></i>
+                    <span class="font-bold text-slate-200">{{ property.bedrooms }} Quarto(s)</span>
+                </div>
+                <div class="bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
+                    <i class="fa-solid fa-bath text-brand-400 block text-base mb-1"></i>
+                    <span class="font-bold text-slate-200">{{ property.bathrooms }} Banheiro(s)</span>
+                </div>
+                <div class="bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
+                    <i class="fa-solid fa-ruler-combined text-brand-400 block text-base mb-1"></i>
+                    <span class="font-bold text-slate-200">{{ property.area }} m²</span>
+                </div>
+            </div>
+
+            <!-- Descrição Curta -->
+            <p class="text-xs text-slate-300 leading-relaxed bg-slate-900/30 p-3 rounded-xl border border-slate-800/50">
+                {{ property.description }}
+            </p>
+        </div>
+    </div>
+
+    <!-- BOTÃO PRINCIPAL: LINK PARA A FICHA COMPLETA NO PRÓPRIO IMOVIU -->
+    <div class="space-y-3 pt-2">
+        <a href="/imovel/{{ token }}" class="w-full flex items-center justify-center space-x-3 bg-gradient-to-r from-gold-500 via-amber-500 to-gold-600 hover:from-gold-400 hover:to-amber-500 text-slate-950 font-extrabold py-4 px-6 rounded-2xl text-base shadow-xl btn-gold-glow transition-all transform hover:-translate-y-0.5">
+            <i class="fa-solid fa-building-circle-check text-xl"></i>
+            <span>Ver Ficha Completa do Imóvel</span>
+            <i class="fa-solid fa-arrow-right text-sm"></i>
+        </a>
+
+        <a href="https://wa.me/{{ owner.whatsapp }}?text=Olá%20{{ owner.name }},%20estou%20em%20frente%20ao%20imóvel%20{{ property.title }}%20e%20gostaria%20de%20mais%20informações!" target="_blank" class="w-full flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-6 rounded-2xl text-sm shadow-lg transition-all">
+            <i class="fa-brands fa-whatsapp text-lg"></i>
+            <span>Falar com {{ owner.name }} Agora</span>
+        </a>
+    </div>
+
+</main>
+{% endblock %}

@@ -19,7 +19,6 @@ import {
   AlertTriangle,
   RefreshCw,
   Trash2,
-  Download,
   Target,
 } from "lucide-react";
 
@@ -38,6 +37,8 @@ interface ScraperResult {
   status?: string; // 'active', 'removed', 'tentou_converter'
   firstSeenAt?: string;
   lastSeenAt?: string;
+  publishedAt?: string;
+  dataPublicacaoRaw?: string;
 }
 
 export function ProspeccaoDirect() {
@@ -221,20 +222,6 @@ export function ProspeccaoDirect() {
         </div>
 
         <div className="flex items-center gap-2">
-          <a
-            href="/api/desktop-agent/download"
-            download="IF-Prospeccao-Agent-Windows.exe"
-          >
-            <Button
-              variant="default"
-              size="sm"
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium"
-            >
-              <Download className="h-4 w-4" />
-              Baixar Agente Windows (.exe)
-            </Button>
-          </a>
-
           <Button
             onClick={handleLimparTodos}
             disabled={carregando}
@@ -478,13 +465,20 @@ export function ProspeccaoDirect() {
                                       <p className="text-xs text-muted-foreground mt-2 pl-8 line-clamp-2">
                                         {resultado.trecho}
                                       </p>
-                                      <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mt-2 pl-8">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-slate-400 mt-2 pl-8">
                                         <span className="truncate max-w-md">{resultado.link}</span>
-                                        {resultado.lastSeenAt && (
-                                          <span className="shrink-0 text-slate-400">
-                                            Atualizado em: {new Date(resultado.lastSeenAt).toLocaleDateString("pt-BR")}
-                                          </span>
-                                        )}
+                                        <div className="flex items-center gap-3 shrink-0">
+                                          {(resultado.dataPublicacaoRaw || resultado.publishedAt) && (
+                                            <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-sans font-semibold">
+                                              📅 Publicado na OLX: {resultado.dataPublicacaoRaw || (resultado.publishedAt ? new Date(resultado.publishedAt).toLocaleString("pt-BR") : "")}
+                                            </span>
+                                          )}
+                                          {resultado.lastSeenAt && (
+                                            <span className="text-slate-400">
+                                              🔍 Capturado em: {new Date(resultado.lastSeenAt).toLocaleDateString("pt-BR")}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
