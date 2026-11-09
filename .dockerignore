@@ -52,3 +52,7 @@ temp
 # Other
 .replit
 replit.nix
+.venv
+**/target
+imoviu_app
+desktop-agent/src-tauri/target
