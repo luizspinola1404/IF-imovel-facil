@@ -355,7 +355,7 @@ async fn raspar_olx(
             html_inicial.clone()
         } else {
             let sep = if target_url.contains('?') { "&" } else { "?" };
-            let url_pag = format!("{}{:?}o={}", target_url, sep, pagina);
+            let url_pag = format!("{}{}o={}", target_url, sep, pagina);
             registrar_log(app, logs, format!("[{}] 🔄 Lendo página {}/{}...", timestamp_atual(), pagina, max_paginas));
             if let Ok(_) = tab.navigate_to(&url_pag) {
                 let _ = tab.wait_until_navigated();
@@ -384,7 +384,8 @@ async fn raspar_olx(
         let re_card_title = regex::Regex::new(r#"olx-adcard__title[^>]*>([^<]+)<"#).unwrap();
 
         for link in matches {
-            if !seen.contains(&link) && !link.ends_with(".png") && !link.ends_with(".jpg") && !link.ends_with(".ico") {
+            let is_real_estate = link.contains("/imoveis/") || link.contains("/terrenos/") || link.contains("/apartamentos/") || link.contains("/casas/");
+            if !seen.contains(&link) && is_real_estate && !link.ends_with(".png") && !link.ends_with(".jpg") && !link.ends_with(".ico") {
                 seen.insert(link.clone());
                 novos_na_pagina += 1;
 
@@ -473,7 +474,7 @@ async fn enviar_para_servidor(
     });
 
     let client = reqwest::Client::new();
-    match client.post(&sync_endpoint).timeout(std::time::Duration::from_secs(5)).json(&payload).send().await {
+    match client.post(&sync_endpoint).timeout(std::time::Duration::from_secs(30)).json(&payload).send().await {
         Ok(resp) => {
             if resp.status().is_success() {
                 if let Ok(json) = resp.json::<serde_json::Value>().await {
@@ -534,7 +535,7 @@ async fn fetch_server_config(server_url: String, state: State<'_, AppState>) -> 
     println!("DEBUG: Buscando configurações nativas do servidor: {}", endpoint);
 
     let client = reqwest::Client::new();
-    match client.get(&endpoint).timeout(std::time::Duration::from_secs(5)).send().await {
+    match client.get(&endpoint).timeout(std::time::Duration::from_secs(20)).send().await {
         Ok(resp) => {
             let status = resp.status();
             if status.is_success() {
@@ -577,7 +578,7 @@ async fn sync_server_config(server_url: String, config: AgentConfig, state: Stat
     });
 
     let client = reqwest::Client::new();
-    match client.post(&endpoint).timeout(std::time::Duration::from_secs(5)).json(&payload).send().await {
+    match client.post(&endpoint).timeout(std::time::Duration::from_secs(20)).json(&payload).send().await {
         Ok(resp) => {
             if resp.status().is_success() {
                 Ok("Sincronizado com sucesso!".to_string())
@@ -777,3 +778,79 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("erro ao rodar o agente tauri");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_construir_url_olx() {
+        let url = construir_url_olx("PE", "Casa", "venda", "Petrolina", true);
+        assert_eq!(url, "https://www.olx.com.br/imoveis/venda/casas/estado-pe?f=p&q=petrolina");
+
+        let url_aluguel = construir_url_olx("BA", "Terreno", "aluguel", "Juazeiro", true);
+        assert_eq!(url_aluguel, "https://www.olx.com.br/imoveis/aluguel/terrenos-e-lotes/estado-ba?f=p&q=juazeiro");
+    }
+
+    #[test]
+    fn test_parse_olx_date() {
+        let (dt, raw) = parse_olx_date("Hoje, 14:30");
+        assert!(dt.is_some());
+        assert_eq!(raw, Some("Hoje, 14:30".to_string()));
+
+        let (dt_ontem, raw_ontem) = parse_olx_date("Ontem, 09:15");
+        assert!(dt_ontem.is_some());
+        assert_eq!(raw_ontem, Some("Ontem, 09:15".to_string()));
+
+        let (dt_mes, raw_mes) = parse_olx_date("10 de nov., 11:20");
+        assert!(dt_mes.is_some());
+        assert_eq!(raw_mes, Some("10 de nov., 11:20".to_string()));
+    }
+
+    #[test]
+    fn test_extracao_links_e_cards_html() {
+        let sample_html = r#"
+        <html>
+            <body>
+                <span class="olx-text">120 resultados</span>
+                <div data-ds-component="DS-AdCard">
+                    <a href="https://pe.olx.com.br/regiao-de-petrolina/imoveis/casa-ampla-em-petrolina-123456789">
+                        <h2 class="olx-adcard__title">Casa Ampla em Petrolina</h2>
+                    </a>
+                    <span class="olx-adcard__date">Hoje, 10:00</span>
+                </div>
+                <div data-ds-component="DS-AdCard">
+                    <a href="https://pe.olx.com.br/regiao-de-petrolina/imoveis/terreno-centro-987654321">
+                        <h2 class="olx-adcard__title">Terreno Centro</h2>
+                    </a>
+                    <span class="olx-adcard__date">Ontem, 16:45</span>
+                </div>
+            </body>
+        </html>
+        "#;
+
+        let re_href = regex::Regex::new(r#"href="(https://[a-z0-9\.-]*olx\.com\.br/[^"]*?-\d+)""#).unwrap();
+        let re_card_title = regex::Regex::new(r#"olx-adcard__title[^>]*>([^<]+)<"#).unwrap();
+        let re_date = regex::Regex::new(r#"olx-adcard__date[^>]*>([^<]+)<"#).unwrap();
+
+        let mut matches = Vec::new();
+        for cap in re_href.captures_iter(sample_html) {
+            if let Some(m) = cap.get(1) {
+                matches.push(m.as_str().to_string());
+            }
+        }
+
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0], "https://pe.olx.com.br/regiao-de-petrolina/imoveis/casa-ampla-em-petrolina-123456789");
+
+        let pos = sample_html.find(&matches[0]).unwrap();
+        let window = &sample_html[pos.saturating_sub(200)..(pos + 500).min(sample_html.len())];
+
+        let titulo = re_card_title.captures(window).map(|c| c.get(1).unwrap().as_str().to_string());
+        assert_eq!(titulo, Some("Casa Ampla em Petrolina".to_string()));
+
+        let data = re_date.captures(window).map(|c| c.get(1).unwrap().as_str().to_string());
+        assert_eq!(data, Some("Hoje, 10:00".to_string()));
+    }
+}
+
