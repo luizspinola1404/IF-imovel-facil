@@ -92,6 +92,16 @@ export async function sincronizarLoteProspeccao(payload: SyncBatchRequest) {
 
   // 1. Processa cada item enviado no lote
   for (const item of items) {
+    if (!item.link) continue;
+    const isImovel = item.link.includes("/imoveis/") ||
+                     item.link.includes("/terrenos/") ||
+                     item.link.includes("/apartamentos/") ||
+                     item.link.includes("/casas/") ||
+                     item.link.includes("/comercio-e-industria/");
+    if (!isImovel) {
+      continue;
+    }
+
     const leadId = item.id || gerarId(item.titulo, item.link);
     const pubDate = item.published_at ? new Date(item.published_at) : null;
 

@@ -384,7 +384,11 @@ async fn raspar_olx(
         let re_card_title = regex::Regex::new(r#"olx-adcard__title[^>]*>([^<]+)<"#).unwrap();
 
         for link in matches {
-            let is_real_estate = link.contains("/imoveis/") || link.contains("/terrenos/") || link.contains("/apartamentos/") || link.contains("/casas/");
+            let is_real_estate = link.contains("/imoveis/") ||
+                                 link.contains("/terrenos/") ||
+                                 link.contains("/apartamentos/") ||
+                                 link.contains("/casas/") ||
+                                 link.contains("/comercio-e-industria/");
             if !seen.contains(&link) && is_real_estate && !link.ends_with(".png") && !link.ends_with(".jpg") && !link.ends_with(".ico") {
                 seen.insert(link.clone());
                 novos_na_pagina += 1;
